@@ -84,3 +84,37 @@ test('外部リソースを参照しない', () => {
   assert.ok(!svg.includes('http'));
   assert.ok(!svg.includes('<script'));
 });
+
+test('6日間隔は接続される（GAP_BREAK_DAYS=7が境界）', () => {
+  const svg = lineChartSvg([series([
+    { date: '2026-07-01', count: 10 },
+    { date: '2026-07-07', count: 10 },
+  ])]);
+  assert.equal((svg.match(/<polyline/g) || []).length, 1, '6日間隔なので1本の polyline');
+});
+
+test('7日間隔は接続されない（GAP_BREAK_DAYS=7が境界）', () => {
+  const svg = lineChartSvg([series([
+    { date: '2026-07-01', count: 10 },
+    { date: '2026-07-08', count: 10 },
+  ])]);
+  assert.equal((svg.match(/<polyline/g) || []).length, 0, '7日間隔なので polyline なし（両点が孤立）');
+});
+
+test('3点で中間が7日以上離れると、2つの polyline に分かれる', () => {
+  const svg = lineChartSvg([series([
+    { date: '2026-07-01', count: 10 },
+    { date: '2026-07-02', count: 10 },
+    { date: '2026-07-31', count: 10 },
+  ])]);
+  assert.equal((svg.match(/<polyline/g) || []).length, 1, '07-01→07-02 で1本、07-31 は孤立');
+});
+
+test('ギャップの両側の点すべてが circle で描かれる', () => {
+  const svg = lineChartSvg([series([
+    { date: '2026-07-01', count: 10 },
+    { date: '2026-07-02', count: 10 },
+    { date: '2026-07-31', count: 10 },
+  ])]);
+  assert.equal((svg.match(/<circle/g) || []).length, 3, '3点すべてに circle がある');
+});

@@ -1,4 +1,7 @@
 const PAD = { top: 16, right: 16, bottom: 28, left: 36 };
+// ギャップがこれ以上あると polyline が分かれる。ほとんどの子は毎日練習しないので、
+// 欠落ごとに分けると点が散るだけ。7日以上の長い中断は可視化する。
+const GAP_BREAK_DAYS = 7;
 
 function toDayNumber(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -44,16 +47,41 @@ export function lineChartSvg(series, options = {}) {
   }).join('\n  ');
 
   const body = series.filter((s) => s.points.length > 0).map((s) => {
-    const sorted = [...s.points].sort((a, b) => (a.date < b.date ? -1 : 1));
-    const coords = sorted.map((p) => `${r2(x(p.date))},${r2(y(p.count))}`);
-    const line = sorted.length >= 2
-      ? `<polyline points="${coords.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`
-      : '';
+    const sorted = [...s.points].sort((a, b) => {
+      if (a.date < b.date) return -1;
+      if (a.date > b.date) return 1;
+      return 0;
+    });
+
+    // グループ化: 7日以上の間隔で polyline を分ける
+    const runs = [];
+    let current = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+      const dayGap = toDayNumber(sorted[i].date) - toDayNumber(sorted[i - 1].date);
+      if (dayGap < GAP_BREAK_DAYS) {
+        current.push(sorted[i]);
+      } else {
+        runs.push(current);
+        current = [sorted[i]];
+      }
+    }
+    runs.push(current);
+
+    // 各 run について polyline を描く（2点以上のみ）
+    const lines = runs
+      .filter((run) => run.length >= 2)
+      .map((run) => {
+        const coords = run.map((p) => `${r2(x(p.date))},${r2(y(p.count))}`);
+        return `<polyline points="${coords.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+      })
+      .join('\n  ');
+
+    // すべての点に circle を描く
     const dots = sorted.map((p) => `<circle cx="${r2(x(p.date))}" cy="${r2(y(p.count))}" r="3.5" fill="${s.color}"/>`).join('\n  ');
-    return `${line}\n  ${dots}`;
+    return `${lines}${lines ? '\n  ' : ''}${dots}`;
   }).join('\n  ');
 
-  const firstLabel = all.length > 0 ? series.flatMap((s) => s.points).map((p) => p.date).sort()[0] : '';
+  const firstLabel = series.flatMap((s) => s.points).map((p) => p.date).sort()[0];
   const lastLabel = series.flatMap((s) => s.points).map((p) => p.date).sort().slice(-1)[0];
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
