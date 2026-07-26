@@ -31,13 +31,18 @@ function render(root, app, params = {}) {
   const today = app.today();
   const month = params.month || today.slice(0, 7);
   const range = params.range === undefined ? 30 : params.range;
+  const day = params.day;
+  // 現在表示中の状態。ナビ操作は毎回これを土台にして、変えた項目だけ上書きする
+  // （例: レンジタブを押しても月と選択日は保つ）
+  const current = { month, range, day };
 
-  renderCalendar(root, app, player, month, params.day);
-  renderChart(root, app, player, today, range);
+  renderCalendar(root, app, player, current);
+  renderChart(root, app, player, today, current);
   renderNav('logbook', app);
 }
 
-function renderCalendar(root, app, player, month, selectedDay) {
+function renderCalendar(root, app, player, current) {
+  const { month, range, day: selectedDay } = current;
   const dates = new Set(recordedDates(player.records));
   const pbDates = personalBestDates(player.records);
   const [y, m] = month.split('-').map(Number);
@@ -57,8 +62,9 @@ function renderCalendar(root, app, player, month, selectedDay) {
   `;
   root.appendChild(card);
 
-  card.querySelector('#prev').addEventListener('click', () => app.go('logbook', { month: shiftMonth(month, -1) }));
-  card.querySelector('#next').addEventListener('click', () => app.go('logbook', { month: shiftMonth(month, 1) }));
+  // 月を移動したら、選択中の日はその月に属していたものなので消す。レンジは維持する
+  card.querySelector('#prev').addEventListener('click', () => app.go('logbook', { ...current, month: shiftMonth(month, -1), day: undefined }));
+  card.querySelector('#next').addEventListener('click', () => app.go('logbook', { ...current, month: shiftMonth(month, 1), day: undefined }));
 
   const cal = card.querySelector('#cal');
   for (const w of ['にち', 'げつ', 'か', 'すい', 'もく', 'きん', 'ど']) {
@@ -81,7 +87,8 @@ function renderCalendar(root, app, player, month, selectedDay) {
     if (date === selectedDay) cell.style.outline = '2px solid var(--accent)';
     const mark = pbDates.has(date) ? '★' : (dates.has(date) ? '<span class="dot"></span>' : '');
     cell.innerHTML = `<div>${d}</div>${mark}`;
-    cell.addEventListener('click', () => app.go('logbook', { month, day: date }));
+    // 日をタップしたら月とレンジは維持する
+    cell.addEventListener('click', () => app.go('logbook', { ...current, day: date }));
     cal.appendChild(cell);
   }
 
@@ -107,7 +114,8 @@ function renderCalendar(root, app, player, month, selectedDay) {
   }
 }
 
-function renderChart(root, app, player, today, range) {
+function renderChart(root, app, player, today, current) {
+  const { range } = current;
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = '<h2>せいちょう グラフ</h2>';
@@ -120,7 +128,8 @@ function renderChart(root, app, player, today, range) {
     b.className = value === range ? 'btn' : 'btn btn-sub';
     b.style.flex = '1';
     b.textContent = label;
-    b.addEventListener('click', () => app.go('logbook', { range: value }));
+    // レンジを切り替えても月と選択中の日は維持する
+    b.addEventListener('click', () => app.go('logbook', { ...current, range: value }));
     tabs.appendChild(b);
   }
   card.appendChild(tabs);
