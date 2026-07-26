@@ -5,6 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "start": "node tools/serve.js",
+    "icon": "node tools/make-icon.js"
   }
 }
