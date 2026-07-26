@@ -77,6 +77,26 @@ test('silhouette は全キャラ・全形態で灰色と輪郭のインク色以
   }
 });
 
+test('silhouette は aria-label にも本名を出さない（未所持キャラの名前が読み上げられないように）', () => {
+  for (const c of CHARACTERS) {
+    for (const stage of [0, 1, 2]) {
+      const svg = characterSvg(c.id, stage, { silhouette: true });
+      assert.ok(
+        !svg.includes(c.name),
+        `${c.id} stage${stage}: silhouette なのに aria-label 等に本名 "${c.name}" が出た`
+      );
+      assert.ok(svg.includes('aria-label="みかいほうの キャラクター"'), `${c.id} stage${stage}`);
+    }
+  }
+});
+
+test('silhouette ではない通常表示は aria-label に本名を出す（既存動作の維持）', () => {
+  for (const c of CHARACTERS) {
+    const svg = characterSvg(c.id, 0);
+    assert.ok(svg.includes(`aria-label="${c.name}"`), `${c.id}: 通常表示で本名が aria-label に出ていない`);
+  }
+});
+
 test('size オプションで幅と高さが変わる', () => {
   const svg = characterSvg('hinoko', 0, { size: 240 });
   assert.ok(svg.includes('width="240"'));

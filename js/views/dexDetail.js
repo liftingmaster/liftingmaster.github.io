@@ -4,8 +4,21 @@ import { evolutionProgress } from '../core/evolution.js';
 import { levelFromExp } from '../core/exp.js';
 import { personalBest, recordedDates } from '../core/stats.js';
 import { longestStreak } from '../core/streak.js';
+import { UNLOCK_LEVELS } from '../core/unlock.js';
 import { characterSvg } from '../svg/character.js';
 import { escapeHtml } from './playerSelect.js';
+
+/**
+ * 未所持キャラの「なかまに なる」条件テキスト。
+ * unlockLevel が 0 なのは御三家の残り2体で、実際には Lv10（2択）か Lv20（自動付与）で
+ * 手に入る。「Lv 0 で…」は意味をなさないので、御三家専用の文言に差し替える。
+ */
+function unlockText(char) {
+  if (char.unlockLevel === 0) {
+    return `Lv${UNLOCK_LEVELS[0]} か Lv${UNLOCK_LEVELS[1]} で なかまに なる`;
+  }
+  return `Lv ${char.unlockLevel} で なかまに なる`;
+}
 
 export function register(app) {
   app.registerScreen('dexDetail', render);
@@ -28,7 +41,7 @@ function render(root, app, params = {}) {
       ${characterSvg(char.id, 0, { size: 160, silhouette: true })}
       <div class="muted">No.${no}</div>
       <h1>？？？</h1>
-      <p>Lv ${char.unlockLevel} で なかまに なる</p>
+      <p>${unlockText(char)}</p>
       <p class="muted">いまの さいこう レベル: ${maxLevelEver(player)}</p>`;
     root.appendChild(card);
     appendBack(root, app);

@@ -132,7 +132,9 @@ export function characterSvg(charId, stage, options = {}) {
        <circle cx="50" cy="${p.headY}" r="${p.headR}" fill="${SILHOUETTE}"/>`
     : skeleton(p, palette);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${char.name}">
+  const ariaLabel = silhouette ? 'みかいほうの キャラクター' : char.name;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${ariaLabel}">
   ${stage === 2 && !silhouette ? aura(palette) : ''}
   ${parts(stage, palette)}
   ${body}
