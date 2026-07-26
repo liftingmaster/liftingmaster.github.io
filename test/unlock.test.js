@@ -58,3 +58,24 @@ test('nextUnlock は次の解放を予告する', () => {
 test('nextUnlock は Lv100 到達後は null', () => {
   assert.equal(nextUnlock(100), null);
 });
+
+test('Lv10 の選択を確定してから再計算すると、Lv20 は残り1体の自動付与になる', () => {
+  const before = pendingUnlocks(40, ['hinoko']);
+  assert.deepEqual(before.map((x) => x.level), [10, 20, 30, 40]);
+  assert.deepEqual(before[0].choices.sort(), ['happa', 'shizuku']);
+
+  // Lv10 で shizuku を選んだことにして再計算する
+  const after = pendingUnlocks(40, ['hinoko', 'shizuku']);
+  const lv20 = after.find((x) => x.level === 20);
+  assert.deepEqual(lv20.choices, ['happa']);
+});
+
+test('Lv99 では かげろ はまだ解放されない', () => {
+  const owned = ['hinoko', 'shizuku', 'happa', 'pikari', 'mokumo', 'kirara', 'ganro', 'kooru'];
+  const p = pendingUnlocks(99, owned);
+  assert.deepEqual(p, []);
+});
+
+test('nextUnlock はちょうど節目のレベルでは次の節目を予告する', () => {
+  assert.deepEqual(nextUnlock(30), { level: 40, charId: 'mokumo' });
+});
