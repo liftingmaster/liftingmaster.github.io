@@ -178,3 +178,76 @@ test('importJson はスキーマ不一致を拒否する', () => {
   assert.equal(r.ok, false);
   assert.equal(r.state, null);
 });
+
+// --- レビュー指摘の Critical 不具合の再発防止テスト ---
+
+/** getItem は固定の壊れたペイロードを返し、setItem は常に例外を投げる偽物 */
+function failingQuarantineStorage(brokenRaw) {
+  return {
+    getItem: (k) => (k === STORAGE_KEY ? brokenRaw : null),
+    setItem: () => { throw new Error('QuotaExceededError'); },
+  };
+}
+
+test('validateState: chars 配列に null が含まれても例外を投げず不正として弾く', () => {
+  const s = createInitialState();
+  const p = player();
+  p.chars = [null];
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+
+  let r;
+  assert.doesNotThrow(() => { r = validateState(s); });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.length > 0);
+});
+
+test('importJson: chars に null が含まれるデータを例外を投げず拒否する', () => {
+  const s = createInitialState();
+  const p = player();
+  p.chars = [null];
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+
+  let r;
+  assert.doesNotThrow(() => { r = importJson(JSON.stringify(s)); });
+  assert.equal(r.ok, false);
+  assert.equal(r.state, null);
+  assert.ok(r.errors.length > 0);
+});
+
+test('load: chars に null を含む壊れたデータでも例外を投げず初期状態で起動する', () => {
+  const s = createInitialState();
+  const p = player();
+  p.chars = [null];
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+  const st = fakeStorage({ [STORAGE_KEY]: JSON.stringify(s) });
+
+  let loaded;
+  assert.doesNotThrow(() => { loaded = load(st); });
+  assert.equal(loaded.ok, true);
+  assert.equal(loaded.recovered, true);
+  assert.deepEqual(loaded.state, createInitialState());
+});
+
+test('load: 退避の書き込み自体が失敗しても例外を投げず初期状態で起動する', () => {
+  const st = failingQuarantineStorage('{kowareteiru');
+
+  let loaded;
+  assert.doesNotThrow(() => { loaded = load(st); });
+  assert.equal(loaded.ok, true);
+  assert.equal(loaded.recovered, true);
+  assert.deepEqual(loaded.state, createInitialState());
+});
+
+test('load: 2回目の破損は .broken.2 に退避し、1回目の .broken は残る', () => {
+  const st = fakeStorage({ [STORAGE_KEY]: '{first-broken' });
+  load(st);
+  assert.equal(st.data[`${STORAGE_KEY}.broken`], '{first-broken');
+
+  st.data[STORAGE_KEY] = '{second-broken';
+  load(st);
+  assert.equal(st.data[`${STORAGE_KEY}.broken`], '{first-broken');
+  assert.equal(st.data[`${STORAGE_KEY}.broken.2`], '{second-broken');
+});

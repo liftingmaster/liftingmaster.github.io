@@ -74,6 +74,7 @@ export function validateState(obj) {
       errors.push(`${where}: chars が不正`);
     } else {
       p.chars.forEach((c, j) => {
+        if (!c || typeof c !== 'object') { errors.push(`${where}.chars[${j}]: キャラがオブジェクトでない`); return; }
         if (!VALID_CHAR_IDS.has(c.charId)) errors.push(`${where}.chars[${j}]: 未知のキャラ (${c.charId})`);
         if (!Number.isFinite(c.exp) || c.exp < 0) errors.push(`${where}.chars[${j}]: exp が不正`);
         if (!Array.isArray(c.evolvedStages)) errors.push(`${where}.chars[${j}]: evolvedStages が不正`);
@@ -81,7 +82,7 @@ export function validateState(obj) {
           errors.push(`${where}.chars[${j}]: nickname が不正`);
         }
       });
-      if (!p.chars.some((c) => c.charId === p.activeCharId)) {
+      if (!p.chars.some((c) => c && c.charId === p.activeCharId)) {
         errors.push(`${where}: activeCharId が手持ちにない`);
       }
     }
@@ -93,6 +94,23 @@ export function validateState(obj) {
   return { ok: errors.length === 0, errors };
 }
 
+/**
+ * 破損データを退避する。1枠目(`${STORAGE_KEY}.broken`)が空ならそこへ、
+ * 埋まっていれば2枠目(`${STORAGE_KEY}.broken.2`)へ上書きする（無制限にキーを増やさないため）。
+ * 退避の書き込み自体が失敗しても（クォータ超過など）例外は外に漏らさない。
+ * フォレンジック用のコピーを失うことより、起動できなくなることの方が悪いため。
+ */
+function quarantine(storage, raw) {
+  try {
+    const key = storage.getItem(`${STORAGE_KEY}.broken`) === null
+      ? `${STORAGE_KEY}.broken`
+      : `${STORAGE_KEY}.broken.2`;
+    storage.setItem(key, raw);
+  } catch {
+    // 退避に失敗しても起動は続行する
+  }
+}
+
 /** 破損データは別キーに退避し、初期状態で起動する */
 export function load(storage) {
   const raw = storage.getItem(STORAGE_KEY);
@@ -102,12 +120,12 @@ export function load(storage) {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    storage.setItem(`${STORAGE_KEY}.broken`, raw);
+    quarantine(storage, raw);
     return { ok: true, state: createInitialState(), recovered: true };
   }
 
   if (!validateState(parsed).ok) {
-    storage.setItem(`${STORAGE_KEY}.broken`, raw);
+    quarantine(storage, raw);
     return { ok: true, state: createInitialState(), recovered: true };
   }
 
