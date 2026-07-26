@@ -25,12 +25,14 @@ test('dateOutOfRangeReason は範囲内なら null', () => {
   assert.equal(dateOutOfRangeReason('2025-07-27', '2026-07-27'), null);
 });
 
-test('dateOutOfRangeReason は未来日を理由付きで拒否する', () => {
-  assert.equal(typeof dateOutOfRangeReason('2026-07-28', '2026-07-27'), 'string');
+// 理由の文言まで固定する。typeof だけ見ていると、未来日と「1年より前」の
+// メッセージが入れ替わっても気づけない
+test('dateOutOfRangeReason は未来日を「みらいの ひ」として拒否する', () => {
+  assert.match(dateOutOfRangeReason('2026-07-28', '2026-07-27'), /みらいの ひ/);
 });
 
-test('dateOutOfRangeReason は1年より前を理由付きで拒否する', () => {
-  assert.equal(typeof dateOutOfRangeReason('2025-07-26', '2026-07-27'), 'string');
+test('dateOutOfRangeReason は1年より前を「1ねんより まえ」として拒否する', () => {
+  assert.match(dateOutOfRangeReason('2025-07-26', '2026-07-27'), /1ねんより まえ/);
 });
 
 test('dateOutOfRangeReason は未選択（空文字）を理由付きで拒否する', () => {
