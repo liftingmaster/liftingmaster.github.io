@@ -131,13 +131,16 @@ export function addRecord(player, { id, count, mode, date, now }) {
   if (player.settings.approvalEnabled) {
     const next = clone(player);
     next.pending.push(record);
+    const level = levelFromExp(activeCharEntry(next).exp).level;
+    const ownedIds = next.chars.map((c) => c.charId);
     return {
       player: next,
       result: {
         queued: true, exp: 0, isPersonalBest: false,
-        levelBefore: levelFromExp(activeCharEntry(next).exp).level,
-        levelAfter: levelFromExp(activeCharEntry(next).exp).level,
-        evolvedTo: null, unlocks: [],
+        levelBefore: level,
+        levelAfter: level,
+        evolvedTo: null,
+        unlocks: pendingUnlocks(maxLevelEver(next), ownedIds),
       },
     };
   }

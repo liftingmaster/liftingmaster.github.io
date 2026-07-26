@@ -6,6 +6,7 @@ import {
 } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
 import { totalExpForLevel } from '../js/core/exp.js';
+import { pendingUnlocks } from '../js/core/unlock.js';
 
 const NOW = '2026-07-26T10:00:00.000Z';
 const base = (starterId = 'mokumo') => {
@@ -87,6 +88,19 @@ test('addRecord: 承認ONなら承認待ちに入りEXPは0', () => {
   assert.equal(player.records.length, 0);
   assert.equal(player.pending.length, 1);
   assert.equal(activeCharEntry(player).exp, 0);
+});
+
+test('addRecord: 承認ONでも既にある解放待ちを見逃さない', () => {
+  const p = base();
+  p.chars[0].exp = totalExpForLevel(10); // すでにLv10到達済み・未受取の解放がある
+  p.settings.approvalEnabled = true;
+
+  const expected = pendingUnlocks(maxLevelEver(p), p.chars.map((c) => c.charId));
+  assert.ok(expected.length > 0, 'テストの前提: 解放待ちがあること');
+
+  const { result } = addRecord(p, { id: 'q1', count: 10, mode: 'no', date: '2026-07-26', now: NOW });
+  assert.equal(result.queued, true);
+  assert.deepEqual(result.unlocks, expected);
 });
 
 test('addRecord: レベルアップを検知する', () => {
