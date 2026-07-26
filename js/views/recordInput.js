@@ -61,9 +61,15 @@ function render(root, app) {
 
   card.querySelector('#cancel').addEventListener('click', () => app.go('home'));
 
+  let saving = false;
   saveBtn.addEventListener('click', () => {
+    // 子どもは同じボタンを続けて叩く。画面が切り替わる前の2回目で
+    // 二重に記録されないよう、最初の1回で締め切る
+    if (saving) return;
     const count = Number(digits);
     if (!(count >= 1 && count <= 9999)) return;
+    saving = true;
+    saveBtn.disabled = true;
 
     // 進化アニメーションには「更新前の段階」が要る。addRecord で player が
     // 上書きされる前に、今の段階を playerView で取っておく
