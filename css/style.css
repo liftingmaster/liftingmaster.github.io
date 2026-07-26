@@ -109,6 +109,28 @@ h2 { font-size: 21px; }
 .dex-cell { min-height: 60px; background: var(--card); border-radius: 14px; padding: 10px; text-align: center; border: none; font-family: inherit; cursor: pointer; }
 .dex-cell svg { width: 100%; height: auto; }
 
+/* きろく画面の日付選択 */
+.date-input {
+  width: 100%;
+  min-height: 60px;
+  font-size: 18px;
+  padding: 0 14px;
+  border: 2px solid #d8e0ec;
+  border-radius: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  background: #fff;
+}
+.date-banner {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff6e5;
+  color: var(--warn);
+  font-weight: bold;
+  font-size: 16px;
+}
+
 /* カレンダー */
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .cal .day { min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 10px; background: #eef2f8; font-size: 13px; }
