@@ -101,7 +101,7 @@ test('7日間隔は接続されない（GAP_BREAK_DAYS=7が境界）', () => {
   assert.equal((svg.match(/<polyline/g) || []).length, 0, '7日間隔なので polyline なし（両点が孤立）');
 });
 
-test('3点で中間が7日以上離れると、2つの polyline に分かれる', () => {
+test('3点の最後が7日以上離れていると、前2点だけが線で結ばれ最後は孤立点になる', () => {
   const svg = lineChartSvg([series([
     { date: '2026-07-01', count: 10 },
     { date: '2026-07-02', count: 10 },
