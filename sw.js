@@ -1,0 +1,64 @@
+/**
+ * オフラインで動かすためのキャッシュ。
+ * ファイルを変えたら CACHE_NAME の版を上げること（古いキャッシュが残るため）。
+ */
+const CACHE_NAME = 'liftingmaster-v1';
+
+const ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './css/style.css',
+  './js/app.js',
+  './js/storage.js',
+  './js/crypto.js',
+  './js/core/exp.js',
+  './js/core/characters.js',
+  './js/core/stats.js',
+  './js/core/streak.js',
+  './js/core/abilities.js',
+  './js/core/gain.js',
+  './js/core/evolution.js',
+  './js/core/unlock.js',
+  './js/core/player.js',
+  './js/svg/character.js',
+  './js/svg/chart.js',
+  './js/views/playerSelect.js',
+  './js/views/home.js',
+  './js/views/recordInput.js',
+  './js/views/result.js',
+  './js/views/party.js',
+  './js/views/dex.js',
+  './js/views/dexDetail.js',
+  './js/views/logbook.js',
+  './js/views/settings.js',
+  './js/views/approval.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+// キャッシュ優先。ネットワークは更新時のみ使う
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(
+    caches.match(event.request).then((hit) => hit || fetch(event.request).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      return res;
+    }).catch(() => caches.match('./index.html'))),
+  );
+});

@@ -148,6 +148,11 @@ async function boot() {
   }
 
   app.go(app.currentPlayer() ? 'home' : 'playerSelect');
+
+  // Service Worker（file:// では登録できないので握りつぶす）
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* オフライン対応なしで動く */ });
+  }
 }
 
 boot();
