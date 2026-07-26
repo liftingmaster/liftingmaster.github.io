@@ -119,9 +119,12 @@ function openActions(root, app, charId, isActive) {
   close.addEventListener('click', () => app.go('party'));
   panel.appendChild(close);
 
+  // openActions は app.render() を経由しないので、render() がやることを自分で行う。
+  // 古い .nav の片付けと、先頭までのスクロール（なかまが増えると一覧は縦に伸びるため、
+  // 下の方のキャラを押したときにパネルが画面外に出てしまう）
   root.innerHTML = '';
   root.appendChild(panel);
-  // openActions は app.render() を経由しないので、自分で古い .nav を片付けてから足す
   document.querySelectorAll('.nav').forEach((el) => el.remove());
   renderNav('party', app);
+  window.scrollTo(0, 0);
 }
