@@ -57,6 +57,32 @@ function validateRecord(r, where, errors) {
   if (!isValidIsoTimestamp(r.createdAt)) errors.push(`${where}: createdAt が不正 (${r.createdAt})`);
 }
 
+/**
+ * 承認のお知らせ1件。ホーム画面が `[...p.pendingEffects, …]` の形で展開し、
+ * 合計を innerHTML に差し込むため、配列でなければ TypeError で承認ボタンが
+ * 黙って効かなくなり、数値でなければ NaN や文字列連結が画面に出る。
+ * バックアップJSONの手編集は「パスワードもあいことばも忘れたとき」の
+ * 正規の復旧手段として案内している以上、手で書かれた値が入ってくる前提で検証する。
+ */
+function validatePendingEffects(list, where, errors) {
+  if (!Array.isArray(list)) { errors.push(`${where}: pendingEffects が配列でない`); return; }
+  list.forEach((e, i) => {
+    const at = `${where}.pendingEffects[${i}]`;
+    if (!e || typeof e !== 'object' || Array.isArray(e)) { errors.push(`${at}: オブジェクトでない`); return; }
+    if (typeof e.type !== 'string' || e.type === '') errors.push(`${at}: type が不正 (${e.type})`);
+    if (!Number.isFinite(e.count)) errors.push(`${at}: count が数値でない (${e.count})`);
+    if (!Number.isFinite(e.exp)) errors.push(`${at}: exp が数値でない (${e.exp})`);
+  });
+}
+
+/** パスワード・あいことばの4項目。未設定なら null、設定済みなら文字列 */
+function validateCredentials(settings, where, errors) {
+  for (const key of ['passwordHash', 'passwordSalt', 'secretQuestion', 'secretAnswerHash']) {
+    const v = settings[key];
+    if (v !== null && typeof v !== 'string') errors.push(`${where}: ${key} が不正`);
+  }
+}
+
 export function validateState(obj) {
   const errors = [];
   if (!obj || typeof obj !== 'object') return { ok: false, errors: ['状態がオブジェクトでない'] };
@@ -74,6 +100,9 @@ export function validateState(obj) {
     if (!p || typeof p !== 'object') { errors.push(`${where}: プレイヤーが不正`); return; }
     if (typeof p.id !== 'string' || p.id === '') errors.push(`${where}: id が不正`);
     if (typeof p.name !== 'string' || p.name === '' || p.name.length > 20) errors.push(`${where}: name が不正`);
+    if (!isValidIsoTimestamp(p.createdAt)) errors.push(`${where}: createdAt が不正 (${p.createdAt})`);
+
+    validatePendingEffects(p.pendingEffects, where, errors);
 
     if (!Array.isArray(p.records)) errors.push(`${where}: records が配列でない`);
     else p.records.forEach((r, j) => validateRecord(r, `${where}.records[${j}]`, errors));
@@ -98,8 +127,12 @@ export function validateState(obj) {
       }
     }
 
-    if (!p.settings || typeof p.settings !== 'object') errors.push(`${where}: settings が不正`);
-    else if (typeof p.settings.approvalEnabled !== 'boolean') errors.push(`${where}: approvalEnabled が不正`);
+    if (!p.settings || typeof p.settings !== 'object') {
+      errors.push(`${where}: settings が不正`);
+    } else {
+      if (typeof p.settings.approvalEnabled !== 'boolean') errors.push(`${where}: approvalEnabled が不正`);
+      validateCredentials(p.settings, where, errors);
+    }
   });
 
   return { ok: errors.length === 0, errors };

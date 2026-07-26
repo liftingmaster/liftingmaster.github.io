@@ -254,6 +254,80 @@ test('load: 退避の書き込み自体が失敗しても例外を投げず初�
   assert.deepEqual(loaded.state, createInitialState());
 });
 
+// --- 手で編集したバックアップJSONが入口になるケース ---
+// パスワードもあいことばも忘れたときの復旧手段としてJSONの手編集を案内しているため、
+// 手で書かれた（＝キーが抜けている・型が違う）状態が正規の入力として入ってくる
+
+/** state を1人ぶん組み立てるヘルパ（players[0] を渡した関数で加工できる） */
+function stateWith(mutate) {
+  const s = createInitialState();
+  const p = player();
+  mutate(p);
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+  return s;
+}
+
+test('validateState: pendingEffects が無いプレイヤーを弾く（承認画面が展開して落ちるため）', () => {
+  const s = stateWith((p) => { delete p.pendingEffects; });
+  const r = validateState(s);
+  assert.equal(r.ok, false, 'pendingEffects が無い状態は不正のはず');
+  assert.ok(r.errors.some((e) => e.includes('pendingEffects')));
+});
+
+test('validateState: pendingEffects が配列でない・中身が壊れている場合を弾く', () => {
+  const bad = [
+    'ng',
+    {},
+    [null],
+    [{ type: 'approved', count: 1 }],                       // exp が無い
+    [{ type: 'approved', count: 'いち', exp: 3 }],           // count が数値でない
+    [{ type: 'approved', count: 1, exp: Number.NaN }],       // exp が NaN
+    [{ type: 1, count: 1, exp: 3 }],                         // type が文字列でない
+  ];
+  for (const value of bad) {
+    const r = validateState(stateWith((p) => { p.pendingEffects = value; }));
+    assert.equal(r.ok, false, `pendingEffects=${JSON.stringify(value)} は不正のはず`);
+    assert.ok(r.errors.some((e) => e.includes('pendingEffects')));
+  }
+});
+
+test('validateState: 正しい pendingEffects は通す', () => {
+  const s = stateWith((p) => { p.pendingEffects = [{ type: 'approved', count: 2, exp: 54 }]; });
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: プレイヤーの createdAt が ISO タイムスタンプでなければ弾く', () => {
+  for (const bad of ['2026-07-26', 'kyou', '', undefined, 12345]) {
+    const r = validateState(stateWith((p) => { p.createdAt = bad; }));
+    assert.equal(r.ok, false, `createdAt=${JSON.stringify(bad)} は不正のはず`);
+    assert.ok(r.errors.some((e) => e.includes('createdAt')));
+  }
+});
+
+test('validateState: settings のパスワード4項目は null か文字列だけ', () => {
+  for (const key of ['passwordHash', 'passwordSalt', 'secretQuestion', 'secretAnswerHash']) {
+    const r = validateState(stateWith((p) => { p.settings[key] = 123; }));
+    assert.equal(r.ok, false, `${key}=123 は不正のはず`);
+    assert.ok(r.errors.some((e) => e.includes(key)));
+  }
+  const okState = stateWith((p) => {
+    p.settings.approvalEnabled = true;
+    p.settings.passwordHash = 'abc';
+    p.settings.passwordSalt = 'def';
+    p.settings.secretQuestion = 'すきな たべもの';
+    p.settings.secretAnswerHash = 'ghi';
+  });
+  assert.deepEqual(validateState(okState), { ok: true, errors: [] });
+});
+
+test('importJson: pendingEffects の無いバックアップを取り込まない', () => {
+  const s = stateWith((p) => { delete p.pendingEffects; });
+  const r = importJson(JSON.stringify(s));
+  assert.equal(r.ok, false);
+  assert.equal(r.state, null);
+});
+
 test('load: 2回目の破損は .broken.2 に退避し、1回目の .broken は残る', () => {
   const st = fakeStorage({ [STORAGE_KEY]: '{first-broken' });
   load(st);
