@@ -8,6 +8,12 @@ export function register(app) {
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
+/** ISO文字列（UTC）を端末のローカル時刻の 'HH:MM' にする */
+function localTime(iso) {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** 'YYYY-MM' を1つ進める／戻す */
 function shiftMonth(ym, delta) {
   const [y, m] = ym.split('-').map(Number);
@@ -105,7 +111,7 @@ function renderCalendar(root, app, player, current) {
         const line = document.createElement('div');
         line.className = 'row-between';
         line.style.padding = '6px 0';
-        const time = r.createdAt.slice(11, 16);
+        const time = localTime(r.createdAt);
         line.innerHTML = `<span>${r.mode === 'no' ? 'ノーバウンド' : 'ワンバウンド'}</span>
           <span><b>${r.count}かい</b> <span class="muted">${time}</span></span>`;
         detail.appendChild(line);
