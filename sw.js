@@ -57,8 +57,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((hit) => hit || fetch(event.request).then((res) => {
       const copy = res.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      // 保存に失敗しても返す応答には影響しない。握りつぶさないと未処理の拒否が出る
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match('./index.html'))),
+    }).catch(() => caches.match('./index.html')))
+      // キャッシュ照会そのものが失敗したときも、アプリの入口だけは返す
+      .catch(() => caches.match('./index.html')),
   );
 });
