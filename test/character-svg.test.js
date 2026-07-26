@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARACTERS } from '../js/core/characters.js';
 import { characterSvg } from '../js/svg/character.js';
+import { svgExtents } from './helpers/svg-extents.js';
 
 test('SVG文字列を返す', () => {
   const svg = characterSvg('hinoko', 0);
@@ -101,6 +102,63 @@ test('size オプションで幅と高さが変わる', () => {
   const svg = characterSvg('hinoko', 0, { size: 240 });
   assert.ok(svg.includes('width="240"'));
   assert.ok(svg.includes('height="240"'));
+});
+
+// --- viewBox からのはみ出し（第2進化の足先が切れていた不具合の再発防止） ---
+//
+// BODY の体格表で bodyY + bodyRy - 2 + legLen（足の裏）が 100 を超えると、
+// 全キャラの最終形態の足先が切れる。実際に第2進化は 62+27-2+16 = 103 だった。
+// 体格表だけでなく、キャラ固有パーツ（PARTS）の座標も同じ箱に収まっている必要がある。
+
+test('9体×3形態のどの図形も viewBox（0..100）からはみ出さない', () => {
+  for (const c of CHARACTERS) {
+    for (const stage of [0, 1, 2]) {
+      const shapes = svgExtents(characterSvg(c.id, stage));
+      assert.ok(shapes.length > 0, `${c.id} stage${stage}: 図形が1つも取れていない`);
+      for (const s of shapes) {
+        const where = `${c.id} stage${stage} <${s.kind}>`;
+        assert.ok(s.minX >= 0, `${where}: 左に ${(-s.minX).toFixed(1)} はみ出している`);
+        assert.ok(s.minY >= 0, `${where}: 上に ${(-s.minY).toFixed(1)} はみ出している`);
+        assert.ok(s.maxX <= 100, `${where}: 右に ${(s.maxX - 100).toFixed(1)} はみ出している`);
+        assert.ok(s.maxY <= 100, `${where}: 下に ${(s.maxY - 100).toFixed(1)} はみ出している（足先が切れる）`);
+      }
+    }
+  }
+});
+
+test('シルエット表示でも viewBox からはみ出さない', () => {
+  for (const c of CHARACTERS) {
+    for (const stage of [0, 1, 2]) {
+      for (const s of svgExtents(characterSvg(c.id, stage, { silhouette: true }))) {
+        assert.ok(
+          s.minX >= 0 && s.minY >= 0 && s.maxX <= 100 && s.maxY <= 100,
+          `${c.id} stage${stage} silhouette <${s.kind}> がはみ出している`
+        );
+      }
+    }
+  }
+});
+
+test('形態が進むほど大きくなる（足の裏・体の幅・足の長さ）', () => {
+  // 第2進化を viewBox に収める調整で、第1進化より小さくなっていないことを見る。
+  // 体の幅（bodyRx*2）はいちばん外側の rect（足）ではなく、体の ellipse の幅で見る。
+  const bodyWidth = (stage) => {
+    const ellipses = svgExtents(characterSvg('hinoko', stage)).filter((s) => s.kind === 'ellipse');
+    return Math.max(...ellipses.map((s) => s.maxX - s.minX));
+  };
+  const feet = (stage) => Math.max(
+    ...svgExtents(characterSvg('hinoko', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY)
+  );
+  const legLength = (stage) => Math.max(
+    ...svgExtents(characterSvg('hinoko', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY - s.minY)
+  );
+
+  assert.ok(bodyWidth(0) < bodyWidth(1), '体が 初期 → 第1進化 で大きくなっていない');
+  assert.ok(bodyWidth(1) < bodyWidth(2), '体が 第1進化 → 第2進化 で大きくなっていない');
+  assert.ok(legLength(0) < legLength(1), '足が 初期 → 第1進化 で長くなっていない');
+  assert.ok(legLength(1) < legLength(2), '足が 第1進化 → 第2進化 で長くなっていない');
+  assert.ok(feet(0) < feet(1), '初期より第1進化のほうが背が高くない');
+  assert.ok(feet(2) > 90, `第2進化の足の裏が高すぎて宙に浮いて見える（${feet(2)}）`);
 });
 
 test('未知のキャラIDは例外', () => {

@@ -1,10 +1,21 @@
 import { getCharacter } from '../core/characters.js';
 
-/** 形態ごとの体格 */
+/**
+ * 形態ごとの体格。
+ *
+ * 足の裏は bodyY + bodyRy - 2 + legLen（= skeleton の legY + legLen）に来る。
+ * viewBox は 0 0 100 100 なので、ここが 100 を超えると足が切れる。
+ * 第2進化は 62 + 27 - 2 + 16 = 103 で、全キャラの最終形態の足先が切れていた。
+ * 体の上端（bodyY - bodyRy = 35）と、頭との重なり（6）はそのままに、
+ * お腹の下側と足を詰めて足の裏を 95 に収めてある。
+ *
+ * 足の裏: 形態0 = 86 / 形態1 = 96 / 形態2 = 95（いずれも 100 以内）。
+ * この不変条件は test/character-svg.test.js が9体×3形態で見張っている。
+ */
 const BODY = [
   { headR: 20, headY: 34, bodyRx: 18, bodyRy: 16, bodyY: 66, legLen: 6, eyeR: 3.2 },
   { headR: 17, headY: 30, bodyRx: 21, bodyRy: 22, bodyY: 64, legLen: 12, eyeR: 3.0 },
-  { headR: 15, headY: 26, bodyRx: 25, bodyRy: 27, bodyY: 62, legLen: 16, eyeR: 2.8 },
+  { headR: 15, headY: 26, bodyRx: 25, bodyRy: 24, bodyY: 59, legLen: 14, eyeR: 2.8 },
 ];
 
 const SILHOUETTE = '#b9b9c4';
