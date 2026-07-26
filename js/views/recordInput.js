@@ -75,13 +75,23 @@ function render(root, app) {
     // 上書きされる前に、今の段階を playerView で取っておく
     const before = playerView(player, app.today());
     let outcome = null;
-    app.updatePlayer((p) => {
+    const saved = app.updatePlayer((p) => {
       const { player: next, result } = addRecord(p, {
         id: app.newId('r'), count, mode, date: app.today(), now: app.now(),
       });
       outcome = result;
       return next;
     });
+
+    // 保存できなかったときに結果画面へ進むと、「+30 EXP」「レベルアップ」「進化」まで
+    // 見せてしまうのに記録はどこにも残っていない。updatePlayer はメモリ上も元に戻して
+    // いるので、ここは祝わずに入力画面へ留まり、もう一度押せるようにする。
+    // 「ほぞんできませんでした」は app.persist() が出しているので二重に出さない
+    if (!saved) {
+      saving = false;
+      saveBtn.disabled = false;
+      return;
+    }
 
     app.go('result', {
       result: outcome, charId: before.charId, stageBefore: before.stage, count, mode,

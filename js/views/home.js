@@ -24,7 +24,16 @@ function render(root, app) {
     note.innerHTML = `<h2>おうちのひとが みとめてくれた！</h2>
       <p>${count}けんの きろくが ついかされて <b>${total} EXP</b> もらったよ</p>`;
     root.appendChild(note);
-    app.updatePlayer((p) => ({ ...p, pendingEffects: [] }));
+    const cleared = app.updatePlayer((p) => ({ ...p, pendingEffects: [] }));
+    // ここは失敗しても安全側（お知らせが残るだけで、EXP は承認時にすでに入っている）に
+    // 倒れるが、「updatePlayer の戻り値を必ず見る」という約束は4か所すべてで守る。
+    // 消せていないなら次に開いたときも同じお知らせが出るので、それを先に伝えておく
+    if (!cleared) {
+      note.insertAdjacentHTML(
+        'beforeend',
+        '<p class="muted">（ほぞんできなかったので、つぎに ひらいたときも でるよ）</p>'
+      );
+    }
   }
 
   // 2. 受け取り待ちの仲間

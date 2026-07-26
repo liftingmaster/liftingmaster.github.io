@@ -61,7 +61,11 @@ function renderUnlock(root, app, unlock) {
       <div style="font-weight:bold">${escapeHtml(c.name)}</div>
       <div class="muted">${escapeHtml(c.type)}</div>`;
     cell.addEventListener('click', () => {
-      app.updatePlayer((p) => claimUnlock(p, id, app.now()));
+      const saved = app.updatePlayer((p) => claimUnlock(p, id, app.now()));
+      // 保存できなかったときは「なかまに なった！」と言わない。言ってしまうと
+      // 子どもは仲間が増えたと思うのに、一覧にはそのキャラがいない
+      // （updatePlayer がメモリ上も元に戻している。メッセージは persist() が出す）
+      if (!saved) return;
       app.toast(`${c.name} が なかまに なった！`);
       app.go('party');
     });
@@ -86,7 +90,9 @@ function openActions(root, app, charId, isActive) {
     grow.addEventListener('click', () => {
       const ok = confirm(`${name} を そだてます。いまの キャラの レベルは のこります。いいですか？`);
       if (!ok) return;
-      app.updatePlayer((p) => switchChar(p, charId));
+      const saved = app.updatePlayer((p) => switchChar(p, charId));
+      // 保存できなかったときは切り替わったと言わない（updatePlayer が元に戻している）
+      if (!saved) return;
       app.toast(`${name} を そだてるよ！`);
       app.go('home');
     });
@@ -100,7 +106,9 @@ function openActions(root, app, charId, isActive) {
   rename.addEventListener('click', () => {
     const input = prompt('あたらしい なまえ（10もじまで／からっぽで もとの なまえ）', name);
     if (input === null) return;
-    app.updatePlayer((p) => setNickname(p, charId, input));
+    const saved = app.updatePlayer((p) => setNickname(p, charId, input));
+    // 保存できなかったときは名前が変わったように見せない（updatePlayer が元に戻している）
+    if (!saved) return;
     app.go('party');
   });
   panel.appendChild(rename);
