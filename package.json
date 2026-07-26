@@ -1,0 +1,10 @@
+{
+  "name": "lifting-master",
+  "version": "1.0.0",
+  "description": "子供のリフティング記録アプリ",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
