@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><title>キャラ確認</title>
+<style>
+  body { font-family: sans-serif; background: #fafafa; }
+  .row { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+  .name { width: 6em; font-weight: bold; }
+  .cell { text-align: center; font-size: 12px; color: #666; }
+</style></head>
+<body>
+<div id="out"></div>
+<script type="module">
+  import { CHARACTERS } from '../js/core/characters.js';
+  import { characterSvg } from '../js/svg/character.js';
+  const out = document.getElementById('out');
+  for (const c of CHARACTERS) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div class="name">${c.no}. ${c.name}</div>` +
+      [0, 1, 2].map((s) => `<div class="cell">${characterSvg(c.id, s, { size: 110 })}<br>だんかい${s}</div>`).join('') +
+      `<div class="cell">${characterSvg(c.id, 0, { size: 110, silhouette: true })}<br>みかいほう</div>`;
+    out.appendChild(row);
+  }
+</script>
+</body></html>
