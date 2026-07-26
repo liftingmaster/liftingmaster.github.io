@@ -95,6 +95,19 @@ test('validateState: 回数が範囲外（0・10000・小数）を弾く', () =>
   }
 });
 
+test('validateState: createdAt が ISO タイムスタンプでない記録を弾く', () => {
+  for (const bad of ['2026-07-26', 'not-a-date', '<img src=x onerror=alert(1)>', '', '2026-07-26T10:00:00']) {
+    const s = createInitialState();
+    const p = player();
+    p.records.push({ id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: bad });
+    s.players.push(p);
+    s.activePlayerId = 'p1';
+    const r = validateState(s);
+    assert.equal(r.ok, false, `createdAt=${JSON.stringify(bad)} は不正のはず`);
+    assert.ok(r.errors.some((e) => e.includes('createdAt')));
+  }
+});
+
 test('validateState: 未知のキャラIDを弾く', () => {
   const s = createInitialState();
   const p = player();

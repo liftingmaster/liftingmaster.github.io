@@ -8,9 +8,30 @@ export function register(app) {
 // パスワード認証はこの画面を開いている間だけ有効（画面を離れると再入力）
 let unlocked = false;
 
+function pad(n) { return String(n).padStart(2, '0'); }
+
+/**
+ * ISO文字列（UTC）を端末のローカル時刻の 'HH:MM' にする（js/views/logbook.js の
+ * localTime と同じ考え方）。テンプレート文字列に直接 slice() した値を差し込むと
+ * (a) 表示がUTCのままずれる (b) createdAt がバックアップ経由で任意の文字列に
+ * なっていた場合に innerHTML への注入経路になる、の2つの問題があるため、
+ * 必ず Date で解釈してから数値だけを組み立てる
+ */
+function localTime(iso) {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function render(root, app, params = {}) {
   const player = app.currentPlayer();
   if (!player) return app.go('playerSelect');
+
+  // unlocked はこのモジュールが生きている間ずっと残る変数なので、「戻るボタンでしか
+  // 抜けられない」という前提が崩れても安全なように、外部からの入室（params.unlocked
+  // が付いていない = ホームや設定画面からの入室）では毎回ロックへ戻す。
+  // 画面内の再描画はすべて { unlocked: true } を渡してくるので、これで今までの
+  // 挙動は変えずに「戻るボタンだけが再ロックの唯一の経路」という依存をなくせる
+  if (!params.unlocked) unlocked = false;
 
   if (!player.settings.approvalEnabled) {
     const card = document.createElement('div');
@@ -21,7 +42,7 @@ function render(root, app, params = {}) {
     return;
   }
 
-  if (!unlocked && !params.unlocked) return renderLock(root, app, player);
+  if (!unlocked) return renderLock(root, app, player);
   unlocked = true;
   renderList(root, app, player);
 }
@@ -86,7 +107,7 @@ function renderList(root, app, player) {
     row.style.padding = '12px 0';
     row.innerHTML = `
       <div class="row-between">
-        <span>${q.date} ${q.createdAt.slice(11, 16)}</span>
+        <span>${q.date} ${localTime(q.createdAt)}</span>
         <b>${q.mode === 'no' ? 'ノーバウンド' : 'ワンバウンド'} ${q.count}かい</b>
       </div>`;
 

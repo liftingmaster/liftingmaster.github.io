@@ -4,6 +4,11 @@ export const STORAGE_KEY = 'liftingmaster.v1';
 const SCHEMA_VERSION = 1;
 const VALID_CHAR_IDS = new Set(CHARACTERS.map((c) => c.id));
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// アプリが書き出す createdAt/approvedAt は必ず new Date().toISOString() の形
+// （例: 2026-07-26T10:00:00.000Z）。バックアップの読み込み経由で任意の文字列が
+// 紛れ込むと、画面側でその値を innerHTML に差し込んだときに注入経路になりうるため、
+// 保存前にこの形であることを検証しておく
+const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
 export function createInitialState() {
   return { version: SCHEMA_VERSION, activePlayerId: null, players: [] };
@@ -37,13 +42,19 @@ function isValidDate(s) {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+/** ISO 8601 のタイムスタンプ（new Date().toISOString() の形）か */
+function isValidIsoTimestamp(s) {
+  if (typeof s !== 'string' || !ISO_TIMESTAMP_RE.test(s)) return false;
+  return !Number.isNaN(new Date(s).getTime());
+}
+
 function validateRecord(r, where, errors) {
   if (!r || typeof r !== 'object') { errors.push(`${where}: 記録がオブジェクトでない`); return; }
   if (typeof r.id !== 'string' || r.id === '') errors.push(`${where}: id が不正`);
   if (!isValidDate(r.date)) errors.push(`${where}: date が不正 (${r.date})`);
   if (r.mode !== 'no' && r.mode !== 'one') errors.push(`${where}: mode が不正 (${r.mode})`);
   if (!Number.isInteger(r.count) || r.count < 1 || r.count > 9999) errors.push(`${where}: count が範囲外 (${r.count})`);
-  if (typeof r.createdAt !== 'string') errors.push(`${where}: createdAt が不正`);
+  if (!isValidIsoTimestamp(r.createdAt)) errors.push(`${where}: createdAt が不正 (${r.createdAt})`);
 }
 
 export function validateState(obj) {
