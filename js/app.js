@@ -39,13 +39,20 @@ export const app = {
     return this.state.players.find((p) => p.id === this.state.activePlayerId) || null;
   },
 
-  /** プレイヤーを更新して保存する。保存できたかを呼び出し側へ返す（再描画はしない） */
+  /**
+   * プレイヤーを更新して保存する。保存できたかを呼び出し側へ返す（再描画はしない）。
+   * 保存に失敗したらメモリ上も元に戻す。戻さないと、画面には反映されたのに
+   * ディスクには無い状態が残り、あとで別の保存が成功したときに黙って確定してしまう
+   */
   updatePlayer(fn) {
     const current = this.currentPlayer();
     if (!current) return false;
+    const previousPlayers = this.state.players;
     const next = fn(current);
     this.state.players = this.state.players.map((p) => (p.id === next.id ? next : p));
-    return this.persist();
+    if (this.persist()) return true;
+    this.state.players = previousPlayers;
+    return false;
   },
 
   persist() {
