@@ -96,7 +96,8 @@ h2 { font-size: 21px; }
 
 /* ずかんのグリッド */
 .dex-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.dex-cell { background: var(--card); border-radius: 14px; padding: 10px; text-align: center; border: none; font-family: inherit; cursor: pointer; }
+/* min-height はタッチ操作の下限（60px）を中身に頼らず保証するため */
+.dex-cell { min-height: 60px; background: var(--card); border-radius: 14px; padding: 10px; text-align: center; border: none; font-family: inherit; cursor: pointer; }
 .dex-cell svg { width: 100%; height: auto; }
 
 /* カレンダー */

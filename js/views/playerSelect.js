@@ -28,7 +28,8 @@ function renderList(root, app) {
       <span class="muted">${escapeHtml(v.charName)} Lv${v.level}</span>`;
     btn.addEventListener('click', () => {
       app.state.activePlayerId = p.id;
-      app.persist();
+      // 保存できていないのに先へ進むと、次の操作が消える。作成側と同じく止める
+      if (!app.persist()) return;
       app.go('home');
     });
     card.appendChild(btn);
