@@ -66,8 +66,14 @@ test('Lv10 の選択を確定してから再計算すると、Lv20 は残り1体
 
   // Lv10 で shizuku を選んだことにして再計算する
   const after = pendingUnlocks(40, ['hinoko', 'shizuku']);
+  assert.equal(after.find((x) => x.level === 10), undefined); // Lv10 は完了して消えている
   const lv20 = after.find((x) => x.level === 20);
   assert.deepEqual(lv20.choices, ['happa']);
+});
+
+test('御三家を2体持ったら Lv10 の節目は完了扱いで、二度と出ない', () => {
+  const p = pendingUnlocks(10, ['hinoko', 'shizuku']);
+  assert.deepEqual(p, []);
 });
 
 test('Lv99 では かげろ はまだ解放されない', () => {
