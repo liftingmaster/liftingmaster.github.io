@@ -39,13 +39,13 @@ export const app = {
     return this.state.players.find((p) => p.id === this.state.activePlayerId) || null;
   },
 
-  /** プレイヤーを更新して保存し、再描画する */
+  /** プレイヤーを更新して保存する。保存できたかを呼び出し側へ返す（再描画はしない） */
   updatePlayer(fn) {
     const current = this.currentPlayer();
-    if (!current) return;
+    if (!current) return false;
     const next = fn(current);
     this.state.players = this.state.players.map((p) => (p.id === next.id ? next : p));
-    this.persist();
+    return this.persist();
   },
 
   persist() {

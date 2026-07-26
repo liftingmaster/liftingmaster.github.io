@@ -65,7 +65,7 @@ async function enable(app) {
   const passwordHash = await hashText(salt, pw);
   const secretAnswerHash = await hashText(salt, answer);
 
-  app.updatePlayer((p) => ({
+  const saved = app.updatePlayer((p) => ({
     ...p,
     settings: {
       ...p.settings,
@@ -76,6 +76,9 @@ async function enable(app) {
       secretAnswerHash,
     },
   }));
+  // 保存に失敗したときは persist() 自身が「ほぞんできませんでした」を出すので、
+  // ここでは成功したと嘘をつかない（ONにしたと言わない・画面も動かさない）
+  if (!saved) return;
   app.toast('かくにんを ONに しました');
   app.go('settings');
 }
@@ -101,7 +104,7 @@ async function disable(app, player) {
     : true;
   if (!keep) return;
 
-  app.updatePlayer((p) => ({
+  const saved = app.updatePlayer((p) => ({
     ...p,
     pending: [],
     settings: {
@@ -113,6 +116,9 @@ async function disable(app, player) {
       secretAnswerHash: null,
     },
   }));
+  // 保存に失敗したときは persist() 自身が「ほぞんできませんでした」を出すので、
+  // ここでは成功したと嘘をつかない（OFFにしたと言わない・画面も動かさない）
+  if (!saved) return;
   app.toast('かくにんを OFFに しました');
   app.go('settings');
 }
@@ -149,7 +155,14 @@ function renderBackup(root, app) {
   file.addEventListener('change', async () => {
     const f = file.files && file.files[0];
     if (!f) return;
-    const text = await f.text();
+    let text;
+    try {
+      text = await f.text();
+    } catch (e) {
+      alert(`ファイルを よめませんでした:\n${e.message || e}`);
+      file.value = '';
+      return;
+    }
     const r = importJson(text);
     if (!r.ok) {
       alert(`よみこめませんでした:\n${r.errors.slice(0, 3).join('\n')}`);
@@ -198,9 +211,19 @@ function renderPlayerAdmin(root, app, player) {
   del.addEventListener('click', () => {
     if (!confirm(`${player.name} の きろくを すべて けします。もとに もどせません。`)) return;
     if (!confirm('ほんとうに けしますか？')) return;
+
+    // 保存が失敗したとき、消したつもりのプレイヤーがメモリ上だけ消えたままだと、
+    // 別の操作で保存し直したときに「失敗したはずの削除」が生き返って本当に消えてしまう。
+    // それを防ぐため、失敗したら削除前の状態にきっちり戻す。
+    const previousPlayers = app.state.players;
+    const previousActivePlayerId = app.state.activePlayerId;
     app.state.players = app.state.players.filter((p) => p.id !== player.id);
     app.state.activePlayerId = app.state.players.length > 0 ? app.state.players[0].id : null;
-    if (!app.persist()) return;
+    if (!app.persist()) {
+      app.state.players = previousPlayers;
+      app.state.activePlayerId = previousActivePlayerId;
+      return;
+    }
     app.go(app.state.activePlayerId ? 'home' : 'playerSelect');
   });
   card.appendChild(del);
