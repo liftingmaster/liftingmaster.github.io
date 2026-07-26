@@ -1,0 +1,116 @@
+:root {
+  --bg: #f4f7fb;
+  --card: #ffffff;
+  --ink: #2b2b33;
+  --muted: #7a7a88;
+  --accent: #4a90d9;
+  --accent-dark: #2f6fb0;
+  --ok: #45b26b;
+  --warn: #e8a33d;
+  --danger: #e0555f;
+  --radius: 18px;
+  --shadow: 0 2px 10px rgba(40, 50, 70, 0.10);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+  user-select: none;
+}
+
+#app { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
+
+h1, h2, h3 { margin: 0 0 12px; }
+h1 { font-size: 26px; }
+h2 { font-size: 21px; }
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+/* ボタンは最小60px角（設計の制約） */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  min-width: 60px;
+  padding: 0 22px;
+  font-size: 20px;
+  font-weight: bold;
+  font-family: inherit;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.btn:active { background: var(--accent-dark); }
+.btn[disabled] { background: #c3ccd8; cursor: not-allowed; }
+.btn-lg { width: 100%; min-height: 76px; font-size: 24px; }
+.btn-sub { background: #e8edf5; color: var(--ink); }
+.btn-danger { background: var(--danger); }
+
+/* テンキー */
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.keypad .btn { min-height: 68px; font-size: 26px; }
+
+/* EXPバー */
+.expbar { height: 16px; background: #e3e9f2; border-radius: 8px; overflow: hidden; }
+.expbar > span { display: block; height: 100%; background: var(--ok); transition: width .4s ease; }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.muted { color: var(--muted); font-size: 14px; }
+.center { text-align: center; }
+
+/* 下のナビ */
+.nav {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: space-around;
+  background: #fff; border-top: 1px solid #e2e7ef;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+}
+.nav button {
+  flex: 1; min-height: 60px; border: none; background: none;
+  font-size: 13px; font-family: inherit; color: var(--muted); cursor: pointer;
+}
+.nav button.on { color: var(--accent); font-weight: bold; }
+
+/* 進化のチェックリスト */
+.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 16px; }
+.check .mark { font-size: 20px; }
+.check.done { color: var(--ok); }
+.check.todo { color: var(--muted); }
+
+/* ずかんのグリッド */
+.dex-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.dex-cell { background: var(--card); border-radius: 14px; padding: 10px; text-align: center; border: none; font-family: inherit; cursor: pointer; }
+.dex-cell svg { width: 100%; height: auto; }
+
+/* カレンダー */
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal .day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 10px; background: #eef2f8; font-size: 13px; }
+.cal .day.empty { background: transparent; }
+.cal .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 2px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);
+  background: rgba(43,43,51,.92); color: #fff; padding: 12px 20px; border-radius: 24px;
+  font-size: 16px; z-index: 50;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
