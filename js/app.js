@@ -62,6 +62,9 @@ export const app = {
 
   render() {
     const view = SCREENS[this.screen];
+    // 画面は #app の外（document.body）にもナビを足すので、描き直す前に必ず消す。
+    // これを忘れると画面を移動するたびにナビが積み重なる
+    document.querySelectorAll('.nav').forEach((el) => el.remove());
     if (!view) {
       root.innerHTML = `<div class="card">がめんが みつかりません (${this.screen})</div>`;
       return;
