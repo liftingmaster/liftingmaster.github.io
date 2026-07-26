@@ -8,6 +8,7 @@ const BODY = [
 ];
 
 const SILHOUETTE = '#b9b9c4';
+const ACCENT = '#ff4d6d';
 
 /** 色を暗く／明るくする（#rrggbb 前提） */
 function shade(hex, amount) {
@@ -65,10 +66,13 @@ const PARTS = {
                 <path d="M 78 66 q 10 -12 0 -18 q -6 10 -4 18 z" fill="${c.dark}"/>` : ''}`,
 
   pikari: (s, c) => `
-    <path d="M 36 ${18 - s} l 4 -12 l 5 11 z" fill="${c.main}"/>
-    <path d="M 64 ${18 - s} l -4 -12 l -5 11 z" fill="${c.main}"/>
-    ${s >= 1 ? `<path d="M 80 66 l 12 -6 l -6 8 l 10 2 l -16 6 z" fill="${c.main}"/>` : ''}
-    ${s >= 2 ? `<path d="M 18 52 l -10 6 l 7 1 l -8 6 l 14 -6 z" fill="${c.light}"/>` : ''}`,
+    <path d="M 37 ${18 - s} l 0 8" stroke="${c.dark}" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="37" cy="${15 - s}" r="2.6" fill="${c.light}"/>
+    <path d="M 63 ${18 - s} l 0 8" stroke="${c.dark}" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="63" cy="${15 - s}" r="2.6" fill="${c.light}"/>
+    ${s >= 1 ? `<path d="M 78 58 q 9 -3 7 6 M 81 68 q 9 1 6 9" stroke="${c.main}" stroke-width="2.4" fill="none" stroke-linecap="round"/>` : ''}
+    ${s >= 2 ? `<circle cx="19" cy="48" r="4.4" fill="${c.light}" opacity="0.85"/>
+                <path d="M 19 40 l 0 -5 M 19 56 l 0 5 M 11 48 l -5 0 M 27 48 l 5 0 M 13 42 l -4 -4 M 25 42 l 4 -4 M 13 54 l -4 4 M 25 54 l 4 4" stroke="${c.light}" stroke-width="1.4" stroke-linecap="round"/>` : ''}`,
 
   mokumo: (s, c) => `
     <ellipse cx="50" cy="${88 - s}" rx="${20 + s * 4}" ry="7" fill="${c.light}" opacity="0.85"/>
@@ -99,8 +103,8 @@ const PARTS = {
     <ellipse cx="50" cy="${92 - s}" rx="${18 + s * 4}" ry="5" fill="${c.dark}" opacity="0.5"/>
     ${s >= 1 ? `<path d="M 24 40 q -10 -14 2 -22 q 2 12 6 20 z" fill="${c.dark}"/>
                 <path d="M 76 40 q 10 -14 -2 -22 q -2 12 -6 20 z" fill="${c.dark}"/>` : ''}
-    ${s >= 2 ? `<circle cx="26" cy="18" r="2.2" fill="#ff4d6d"/>
-                <circle cx="74" cy="18" r="2.2" fill="#ff4d6d"/>` : ''}`,
+    ${s >= 2 ? `<circle cx="26" cy="18" r="2.2" fill="${c.accent}"/>
+                <circle cx="74" cy="18" r="2.2" fill="${c.accent}"/>` : ''}`,
 };
 
 /**
@@ -116,8 +120,8 @@ export function characterSvg(charId, stage, options = {}) {
   const { size = 100, silhouette = false } = options;
 
   const palette = silhouette
-    ? { main: SILHOUETTE, dark: SILHOUETTE, light: SILHOUETTE }
-    : { main: char.color, dark: shade(char.color, -0.3), light: shade(char.color, 0.45) };
+    ? { main: SILHOUETTE, dark: SILHOUETTE, light: SILHOUETTE, accent: SILHOUETTE }
+    : { main: char.color, dark: shade(char.color, -0.3), light: shade(char.color, 0.45), accent: ACCENT };
 
   const p = BODY[stage];
   const parts = PARTS[charId];

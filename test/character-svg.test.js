@@ -59,6 +59,24 @@ test('silhouette は灰色だけで描く（キャラ色を出さない）', () 
   assert.ok(svg.includes('#b9b9c4'));
 });
 
+test('silhouette は全キャラ・全形態で灰色と輪郭のインク色以外の色を出さない', () => {
+  // シルエット灰色と、共通骨格が使う目・口のインク色（黒っぽい輪郭・白目ハイライト）だけを許可する。
+  // これ以外の16進カラーが1つでも出たら、PARTSのどこかに色がハードコードされている。
+  const allowed = new Set(['#b9b9c4', '#2b2b33', '#ffffff']);
+  for (const c of CHARACTERS) {
+    for (const stage of [0, 1, 2]) {
+      const svg = characterSvg(c.id, stage, { silhouette: true });
+      const hexes = svg.match(/#[0-9a-fA-F]{6}/g) || [];
+      for (const hex of hexes) {
+        assert.ok(
+          allowed.has(hex.toLowerCase()),
+          `${c.id} stage${stage}: silhouette なのに想定外の色 ${hex} が出た`
+        );
+      }
+    }
+  }
+});
+
 test('size オプションで幅と高さが変わる', () => {
   const svg = characterSvg('hinoko', 0, { size: 240 });
   assert.ok(svg.includes('width="240"'));
