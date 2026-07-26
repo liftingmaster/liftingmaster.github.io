@@ -23,6 +23,15 @@ body {
   user-select: none;
 }
 
+/* body の user-select: none は入力欄にも継承される。WebKit はこの状態だと
+   キャレットを置けないことがあり、そうなると最初の画面で自分の なまえ すら
+   打てなくなる。入力欄だけは必ず選択できるようにしておく */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 #app { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
 
 h1, h2, h3 { margin: 0 0 12px; }

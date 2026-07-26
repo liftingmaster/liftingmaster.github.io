@@ -99,6 +99,24 @@ function renderList(root, app, player) {
     card.innerHTML += '<p>ぜんぶ かくにん ずみです。</p>';
   }
 
+  // 「ぜんぶ みとめる」を主役にする。1件ずつ押す場合は押した順に特性の倍率がかかり、
+  // 自己ベスト・レベル・連続日数を見る特性では合計EXPが順番で変わる
+  // （js/core/gain.js のコメントと test/player.test.js の ひのこ のテストを参照）。
+  // こちらは必ず古い順に処理するので、だれが押しても同じ結果になる
+  if (player.pending.length > 1) {
+    const all = document.createElement('button');
+    all.className = 'btn btn-lg';
+    all.style.margin = '4px 0 6px';
+    all.textContent = 'ぜんぶ みとめる';
+    all.addEventListener('click', () => approveAll(app, player));
+    card.appendChild(all);
+
+    const hint = document.createElement('p');
+    hint.className = 'muted';
+    hint.textContent = 'ふるい きろくから じゅんに まとめて みとめます。ふつうは こちらで だいじょうぶ。';
+    card.appendChild(hint);
+  }
+
   const sorted = [...player.pending].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 
   for (const q of sorted) {
@@ -152,35 +170,29 @@ function renderList(root, app, player) {
   }
 
   root.appendChild(card);
-
-  if (player.pending.length > 1) {
-    const all = document.createElement('button');
-    all.className = 'btn btn-lg';
-    all.textContent = 'ぜんぶ みとめる';
-    all.addEventListener('click', () => {
-      if (!confirm(`${player.pending.length}けん すべてを みとめますか？`)) return;
-      let totalExp = 0;
-      let count = 0;
-      const saved = app.updatePlayer((p) => {
-        let cur = p;
-        const ordered = [...cur.pending].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-        for (const q of ordered) {
-          const { player: next, result } = approvePending(cur, { pendingId: q.id, count: q.count, now: app.now() });
-          cur = next;
-          totalExp += result.exp;
-          count += 1;
-        }
-        return { ...cur, pendingEffects: [...cur.pendingEffects, approvedEffect(count, totalExp)] };
-      });
-      // 保存できなかったときは成功したと言わない（updatePlayer がメモリも元に戻している）
-      if (!saved) return;
-      app.toast(`${count}けん みとめました`);
-      app.go('approval', { unlocked: true });
-    });
-    root.appendChild(all);
-  }
-
   appendBack(root, app);
+}
+
+function approveAll(app, player) {
+  if (!confirm(`${player.pending.length}けん すべてを みとめますか？`)) return;
+  let totalExp = 0;
+  let count = 0;
+  const saved = app.updatePlayer((p) => {
+    let cur = p;
+    // 必ず古い順。1件ずつ承認する場合と違って、押す順番で合計EXPが変わらない
+    const ordered = [...cur.pending].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    for (const q of ordered) {
+      const { player: next, result } = approvePending(cur, { pendingId: q.id, count: q.count, now: app.now() });
+      cur = next;
+      totalExp += result.exp;
+      count += 1;
+    }
+    return { ...cur, pendingEffects: [...cur.pendingEffects, approvedEffect(count, totalExp)] };
+  });
+  // 保存できなかったときは成功したと言わない（updatePlayer がメモリも元に戻している）
+  if (!saved) return;
+  app.toast(`${count}けん みとめました`);
+  app.go('approval', { unlocked: true });
 }
 
 function approveOne(app, pendingId, count) {

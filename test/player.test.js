@@ -196,6 +196,74 @@ test('approvePending: 承認の順番を変えても合計EXPは同じ', () => {
   assert.equal(runOrder(['q2', 'q1', 'q3']), forward);
 });
 
+// 「どの順番で承認しても合計EXPは同じ」が成り立つのは、上のテストが使っている
+// もくも（ノーバウンドに特性が乗らない＝倍率が入力によって変わらない）だけ。
+// 自己ベスト・レベル・連続日数を見る特性では、順番で合計が変わる。
+// これは仕様であって不具合ではない（特性は「その記録の時点の状態」に対して効く）。
+// 直そうとすると一括承認のあいだ特性の入力を凍結することになり、設計の変更になる。
+// 実際の値をここに固定しておき、あとから発見されるのではなくコードに書いておく。
+test('approvePending: ひのこ（自己ベストで倍率が変わる特性）では承認の順番で合計EXPが変わる', () => {
+  const p = base('hinoko');
+  p.settings.approvalEnabled = true;
+
+  // 別々の日の記録2件。同じ日どうしなら日別ベストの差分方式で順不同になるが、
+  // 日をまたぐと「自己ベスト更新かどうか」が承認順で変わる
+  let withQueue = p;
+  withQueue = addRecord(withQueue, {
+    id: 'q1', count: 10, mode: 'no', date: '2026-07-25', now: '2026-07-25T10:00:00.000Z',
+  }).player;
+  withQueue = addRecord(withQueue, {
+    id: 'q2', count: 12, mode: 'no', date: '2026-07-26', now: '2026-07-26T10:00:00.000Z',
+  }).player;
+
+  const runOrder = (order) => {
+    let cur = withQueue;
+    let total = 0;
+    for (const id of order) {
+      const found = cur.pending.find((q) => q.id === id);
+      const r = approvePending(cur, { pendingId: id, count: found.count, now: NOW });
+      cur = r.player;
+      total += r.result.exp;
+    }
+    return total;
+  };
+
+  // 古い順: 10 が自己ベスト（10 × 3 × 1.5 = 45）、次に 12 も自己ベスト（12 × 3 × 1.5 = 54）
+  assert.equal(runOrder(['q1', 'q2']), 99);
+  // 新しい順: 12 が自己ベスト（54）、次の 10 はもう自己ベストではない（10 × 3 = 30）
+  assert.equal(runOrder(['q2', 'q1']), 84);
+  assert.notEqual(runOrder(['q1', 'q2']), runOrder(['q2', 'q1']));
+});
+
+test('approvePending: もくも（入力で倍率が変わらない特性）なら同じ条件でも順不同', () => {
+  // 上のひのこのテストと同じ組み立てで、特性が効かないキャラなら順番によらないこと。
+  // 「順不同が成り立つ条件」がキャラ側にあることを示す対
+  const p = base('mokumo');
+  p.settings.approvalEnabled = true;
+  let withQueue = p;
+  withQueue = addRecord(withQueue, {
+    id: 'q1', count: 10, mode: 'no', date: '2026-07-25', now: '2026-07-25T10:00:00.000Z',
+  }).player;
+  withQueue = addRecord(withQueue, {
+    id: 'q2', count: 12, mode: 'no', date: '2026-07-26', now: '2026-07-26T10:00:00.000Z',
+  }).player;
+
+  const runOrder = (order) => {
+    let cur = withQueue;
+    let total = 0;
+    for (const id of order) {
+      const found = cur.pending.find((q) => q.id === id);
+      const r = approvePending(cur, { pendingId: id, count: found.count, now: NOW });
+      cur = r.player;
+      total += r.result.exp;
+    }
+    return total;
+  };
+
+  assert.equal(runOrder(['q1', 'q2']), 66);
+  assert.equal(runOrder(['q2', 'q1']), 66);
+});
+
 test('rejectPending: 承認待ちを削除してもEXPは動かない', () => {
   const p = base();
   p.settings.approvalEnabled = true;
