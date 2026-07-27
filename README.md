@@ -139,7 +139,7 @@ Service Worker はキャッシュ優先で動くため、これを忘れると�
 ファイルを増やしたときは、次のコマンドで漏れがないか突合すること。
 
 ```bash
-node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const listed=new Set([...sw.matchAll(/'\.\/([^']*)'/g)].map(m=>m[1]).filter(Boolean));const walk=(d,a=[])=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=d+'/'+e.name;if(e.isDirectory()){if(['node_modules','.git','.superpowers','test','tools','docs'].includes(e.name))continue;walk(p,a);}else a.push(p.replace('./',''));}return a;};const onDisk=walk('.').filter(f=>/\.(js|css|html|json|png)$/.test(f)&&f!=='package.json'&&f!=='sw.js');const missing=onDisk.filter(f=>!listed.has(f));console.log(missing.length?'漏れ: '+missing.join(', '):'漏れなし');"
+node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const listed=new Set([...sw.matchAll(/'\.\/([^']*)'/g)].map(m=>m[1]).filter(Boolean));const walk=(d,a=[])=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=d+'/'+e.name;if(e.isDirectory()){if(['node_modules','.git','.superpowers','incoming-art','test','tools','docs'].includes(e.name))continue;walk(p,a);}else a.push(p.replace('./',''));}return a;};const onDisk=walk('.').filter(f=>/\.(js|css|html|json|png)$/.test(f)&&f!=='package.json'&&f!=='sw.js');const missing=onDisk.filter(f=>!listed.has(f));console.log(missing.length?'漏れ: '+missing.join(', '):'漏れなし');"
 ```
 
 あわせて `CACHE_NAME` の版を必ず上げること。上げないと古いキャッシュが配られ、
