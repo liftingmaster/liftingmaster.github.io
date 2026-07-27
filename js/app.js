@@ -1,5 +1,5 @@
 import { load, save, STORAGE_KEY } from './storage.js';
-import { installImgFallback } from './core/imgFallback.js';
+import { installImgFallback } from './imgFallback.js';
 
 const SCREENS = {};   // 名前 -> render 関数（各 view が登録する）
 const root = document.getElementById('app');

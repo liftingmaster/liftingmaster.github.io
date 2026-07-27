@@ -25,7 +25,7 @@ const ASSETS = [
   './js/core/evolution.js',
   './js/core/unlock.js',
   './js/core/player.js',
-  './js/core/imgFallback.js',
+  './js/imgFallback.js',
   './js/svg/character.js',
   './js/svg/artManifest.js',
   './js/svg/chart.js',

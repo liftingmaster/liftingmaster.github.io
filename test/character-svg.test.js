@@ -230,7 +230,7 @@ test('artPath はキャラIDと形態からPNGパスを組み立てる', () => {
   assert.equal(hasArt('hinoko', 3), false); // 範囲外の形態は持っていない扱い
 });
 
-// --- 画像読み込み失敗時のフォールバック（js/core/imgFallback.js）が使うデータ ---
+// --- 画像読み込み失敗時のフォールバック（js/imgFallback.js）が使うデータ ---
 
 test('ひのこの <img> は、フォールバックが状態なしで描き直せるだけの data-* を持つ', () => {
   const html = characterSvg('hinoko', 1, { size: 120, silhouette: true });

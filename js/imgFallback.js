@@ -1,4 +1,4 @@
-import { svgFallback } from '../svg/character.js';
+import { svgFallback } from './svg/character.js';
 
 /**
  * 画像（<img>）の読み込みに失敗したとき、同じキャラ・形態のSVGに描き直す。
