@@ -2,6 +2,7 @@ import { playerView, displayName } from '../core/player.js';
 import { characterSvg } from '../svg/character.js';
 import { escapeHtml } from './playerSelect.js';
 import { formatJaDate } from './recordInput.js';
+import { shouldSuggestBackup } from '../core/backupPrompt.js';
 
 export function register(app) {
   app.registerScreen('result', render);
@@ -68,6 +69,29 @@ function render(root, app, params = {}) {
       un.style.marginTop = '18px';
       un.innerHTML = '<div style="font-size:22px;font-weight:bold;color:var(--accent)">あたらしい なかまが あらわれた！</div>';
       card.appendChild(un);
+    }
+
+    // 演出のいちばん最後に、控えめに添える。祝いの邪魔をしないよう、
+    // 進化・新しい仲間・レベル10またぎの節目があり、かつしばらく
+    // バックアップしていないときだけ出す（判定は js/core/backupPrompt.js）
+    const milestone = {
+      evolved: !!r.evolvedTo,
+      unlocked: r.unlocks.length > 0,
+      levelBefore: r.levelBefore,
+      levelAfter: r.levelAfter,
+    };
+    if (shouldSuggestBackup(milestone, app.state.lastBackupAt, app.now())) {
+      const backupNotice = document.createElement('div');
+      backupNotice.style.cssText = 'margin-top:20px;padding-top:16px;border-top:1px solid #e5e5e5';
+      backupNotice.innerHTML = '<p class="muted" style="font-size:15px">'
+        + 'おうちのひとへ: きろくを ほぞんしておくと あんしんです</p>';
+      const toSettings = document.createElement('button');
+      toSettings.className = 'btn btn-sub';
+      toSettings.style.marginTop = '6px';
+      toSettings.textContent = 'せっていへ';
+      toSettings.addEventListener('click', () => app.go('settings'));
+      backupNotice.appendChild(toSettings);
+      card.appendChild(backupNotice);
     }
   }
 

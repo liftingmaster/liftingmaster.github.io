@@ -11,7 +11,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
 export function createInitialState() {
-  return { version: SCHEMA_VERSION, activePlayerId: null, players: [] };
+  return {
+    version: SCHEMA_VERSION, activePlayerId: null, players: [], lastBackupAt: null,
+  };
 }
 
 export function createPlayer({ id, name, starterId, now }) {
@@ -93,6 +95,12 @@ export function validateState(obj) {
   }
   if (obj.activePlayerId !== null && typeof obj.activePlayerId !== 'string') {
     errors.push('activePlayerId が不正');
+  }
+  // lastBackupAt は Task 27 で追加した項目。既存の家族のバックアップJSONには
+  // 存在しないため、無い（undefined）ことは不正としない。未バックアップとして扱う
+  if (obj.lastBackupAt !== undefined && obj.lastBackupAt !== null
+    && !isValidIsoTimestamp(obj.lastBackupAt)) {
+    errors.push(`lastBackupAt が不正 (${obj.lastBackupAt})`);
   }
 
   obj.players.forEach((p, i) => {

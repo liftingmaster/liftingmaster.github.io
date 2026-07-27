@@ -2,6 +2,7 @@ import { renderNav } from '../app.js';
 import { makeSalt, hashText, verifyText } from '../crypto.js';
 import { exportJson, importJson } from '../storage.js';
 import { escapeHtml } from './playerSelect.js';
+import { formatJaDate } from './recordInput.js';
 
 export function register(app) {
   app.registerScreen('settings', render);
@@ -264,33 +265,101 @@ function finishDisable(app) {
   return true;
 }
 
+/** ISO タイムスタンプを端末ローカルの 'YYYY-MM-DD' にする（UTC往復をしない） */
+function localDateFromIso(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * 書き出す File を組み立てる（同期処理）。共有はユーザー操作から直接呼ぶ必要が
+ * あるため、await を挟まずここまでを一気に終える
+ */
+function buildBackupFile(app) {
+  const json = exportJson(app.state);
+  return new File([json], `liftingmaster-backup-${app.today()}.json`, { type: 'application/json' });
+}
+
+/**
+ * 従来どおりファイルをその端末にダウンロードする（共有シートに未対応な
+ * ブラウザ向けのフォールバック）。
+ * iOS Safari や一部の Android WebView は、(a) アンカーが文書に付いていない
+ * (b) click と同じターンで blob URL を revoke する と、保存を中断して
+ * 何も起きない。バックアップは家族にとって唯一のデータ保護なので、
+ * 黙って失敗するのが一番まずい。文書に足してから押し、片付けは1秒あとに回す
+ */
+function downloadBackupFile(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+/**
+ * バックアップの成功（共有シートを開けた／ダウンロードを実行した）を記録する。
+ * lastBackupAt はプレイヤーではなく状態のトップレベルにあるので updatePlayer は使わない。
+ * 保存に失敗したら、他の操作と同じく成功したふりをせずメモリ上も元に戻す
+ */
+function recordBackupSuccess(app) {
+  const previous = app.state.lastBackupAt;
+  app.state.lastBackupAt = app.now();
+  if (!app.persist()) {
+    app.state.lastBackupAt = previous;
+    return;
+  }
+  app.toast('バックアップしました');
+  app.go('settings');
+}
+
 function renderBackup(root, app, player) {
   const card = document.createElement('div');
   card.className = 'card';
+  const lastBackupLabel = app.state.lastBackupAt
+    ? `まえに ほぞんしたのは ${formatJaDate(localDateFromIso(app.state.lastBackupAt))}`
+    : 'まだ ほぞんしていません';
   card.innerHTML = `<h2>バックアップ</h2>
     <p class="muted">きろくは この たんまつの なかだけに あります。
-    ときどき かきだして ほぞんして おくと あんしんです。</p>`;
+    ときどき かきだして ほぞんして おくと あんしんです。</p>
+    <p class="muted">${escapeHtml(lastBackupLabel)}</p>`;
 
   const out = document.createElement('button');
   out.className = 'btn btn-lg';
-  out.textContent = 'かきだす（ダウンロード）';
+  out.textContent = 'かきだす';
   out.addEventListener('click', () => {
-    const blob = new Blob([exportJson(app.state)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `liftingmaster-backup-${app.today()}.json`;
-    a.style.display = 'none';
-    // iOS Safari や一部の Android WebView は、(a) アンカーが文書に付いていない
-    // (b) click と同じターンで blob URL を revoke する と、保存を中断して
-    // 何も起きない。バックアップは家族にとって唯一のデータ保護なので、
-    // 黙って失敗するのが一番まずい。文書に足してから押し、片付けは1秒あとに回す
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      a.remove();
-      URL.revokeObjectURL(url);
-    }, 1000);
+    // ファイル生成は同期処理。navigator.share はここでユーザー操作から
+    // 直接呼ぶ（await を挟むとブラウザに拒否される）
+    const file = buildBackupFile(app);
+    const canShareFiles = typeof navigator.canShare === 'function'
+      && typeof navigator.share === 'function'
+      && navigator.canShare({ files: [file] });
+
+    if (canShareFiles) {
+      navigator.share({
+        files: [file],
+        title: 'リフティングマスター バックアップ',
+        text: 'きろくの バックアップです',
+      }).then(() => {
+        recordBackupSuccess(app);
+      }).catch((err) => {
+        // おうちのひとが共有を取り消したときは失敗ではない。エラーも出さず、
+        // lastBackupAt も更新しない
+        if (err && err.name === 'AbortError') return;
+        alert(`きょうゆうできませんでした:\n${err && err.message ? err.message : err}`);
+      });
+      return;
+    }
+
+    // 共有シートに対応していない（PCのブラウザなど）ので、従来どおりダウンロードする
+    downloadBackupFile(file);
+    recordBackupSuccess(app);
   });
   card.appendChild(out);
 

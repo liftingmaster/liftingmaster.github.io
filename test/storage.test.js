@@ -328,6 +328,61 @@ test('importJson: pendingEffects の無いバックアップを取り込まな�
   assert.equal(r.state, null);
 });
 
+// --- Task 27: lastBackupAt（後方互換が最優先） ---
+// 既にこのアプリを使っている家族のバックアップJSON・localStorageには
+// lastBackupAt が存在しない。これを必須にすると家族のデータが読み込めなくなるため、
+// 「無い」ことは不正としてはいけない
+
+test('validateState: lastBackupAt が無い（既存データ）状態も ok', () => {
+  const s = createInitialState();
+  delete s.lastBackupAt;
+  s.players.push(player());
+  s.activePlayerId = 'p1';
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: lastBackupAt は null を受理する', () => {
+  const s = createInitialState();
+  s.lastBackupAt = null;
+  s.players.push(player());
+  s.activePlayerId = 'p1';
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: lastBackupAt は ISO タイムスタンプ文字列を受理する', () => {
+  const s = createInitialState();
+  s.lastBackupAt = NOW;
+  s.players.push(player());
+  s.activePlayerId = 'p1';
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: lastBackupAt が ISO タイムスタンプでない文字列を弾く', () => {
+  for (const bad of ['2026-07-26', 'kyou', '', 12345, true, {}]) {
+    const s = createInitialState();
+    s.lastBackupAt = bad;
+    s.players.push(player());
+    s.activePlayerId = 'p1';
+    const r = validateState(s);
+    assert.equal(r.ok, false, `lastBackupAt=${JSON.stringify(bad)} は不正のはず`);
+    assert.ok(r.errors.some((e) => e.includes('lastBackupAt')));
+  }
+});
+
+test('createInitialState は lastBackupAt を null で持つ', () => {
+  assert.equal(createInitialState().lastBackupAt, null);
+});
+
+test('importJson: lastBackupAt の無い古いバックアップも読み込める', () => {
+  const s = createInitialState();
+  delete s.lastBackupAt;
+  s.players.push(player());
+  s.activePlayerId = 'p1';
+  const r = importJson(JSON.stringify(s));
+  assert.equal(r.ok, true);
+  assert.equal(r.state.lastBackupAt, undefined);
+});
+
 test('load: 2回目の破損は .broken.2 に退避し、1回目の .broken は残る', () => {
   const st = fakeStorage({ [STORAGE_KEY]: '{first-broken' });
   load(st);
