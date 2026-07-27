@@ -2,10 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARACTERS } from '../js/core/characters.js';
 import { characterSvg } from '../js/svg/character.js';
+import { hasArt, artPath } from '../js/svg/artManifest.js';
 import { svgExtents } from './helpers/svg-extents.js';
 
+// Task 28: ひのこは画像（<img>）で描かれるようになったため、SVG生成コードそのものを
+// 見るテスト（この1件と、下の「形態が進むほど大きくなる」）は代表キャラを
+// shizuku（画像を持たない）に差し替えた。テストの狙い（SVG文字列が正しく組み立つこと）は
+// 変わっていない。
+
 test('SVG文字列を返す', () => {
-  const svg = characterSvg('hinoko', 0);
+  const svg = characterSvg('shizuku', 0);
   assert.ok(svg.startsWith('<svg'));
   assert.ok(svg.includes('viewBox="0 0 100 100"'));
   assert.ok(svg.trim().endsWith('</svg>'));
@@ -15,14 +21,21 @@ test('9体 × 3形態すべてが描画できる', () => {
   for (const c of CHARACTERS) {
     for (const stage of [0, 1, 2]) {
       const svg = characterSvg(c.id, stage);
-      assert.ok(svg.length > 100, `${c.id} stage${stage} が短すぎる`);
-      assert.ok(svg.startsWith('<svg'), `${c.id} stage${stage}`);
+      // <img> はコード組み立てのSVGより文字数が短くて正常なため、しきい値を描画方式で分ける。
+      // 狙いは変わらない：空や壊れた出力（極端に短い文字列）でないことの確認。
+      const minLength = hasArt(c.id, stage) ? 40 : 100;
+      assert.ok(svg.length > minLength, `${c.id} stage${stage} が短すぎる`);
+      // 画像を持つキャラ（Task 28時点ではひのこ）は <img>、それ以外は <svg> を返す。
+      assert.ok(svg.startsWith('<svg') || svg.startsWith('<img'), `${c.id} stage${stage}`);
     }
   }
 });
 
 test('キャラ固有の色が使われる', () => {
   for (const c of CHARACTERS) {
+    // 画像で描くキャラは色がPNGに焼き込み済みで、マークアップ（<img>）には出ない。
+    // この保証はSVG描画コード（PARTS）が自分の色を使っているかのチェックなので対象外にする。
+    if (hasArt(c.id, 0)) continue;
     const svg = characterSvg(c.id, 0);
     assert.ok(svg.toLowerCase().includes(c.color.toLowerCase()), `${c.id} の色が使われていない`);
   }
@@ -113,6 +126,9 @@ test('size オプションで幅と高さが変わる', () => {
 test('9体×3形態のどの図形も viewBox（0..100）からはみ出さない', () => {
   for (const c of CHARACTERS) {
     for (const stage of [0, 1, 2]) {
+      // 画像（<img>）はSVGのviewBoxを持たず、この不変条件の対象外
+      // （そもそも svgExtents が拾う <circle|ellipse|rect|path> が存在しない）。
+      if (hasArt(c.id, stage)) continue;
       const shapes = svgExtents(characterSvg(c.id, stage));
       assert.ok(shapes.length > 0, `${c.id} stage${stage}: 図形が1つも取れていない`);
       for (const s of shapes) {
@@ -142,15 +158,18 @@ test('シルエット表示でも viewBox からはみ出さない', () => {
 test('形態が進むほど大きくなる（足の裏・体の幅・足の長さ）', () => {
   // 第2進化を viewBox に収める調整で、第1進化より小さくなっていないことを見る。
   // 体の幅（bodyRx*2）はいちばん外側の rect（足）ではなく、体の ellipse の幅で見る。
+  // 元は hinoko で見ていたが、Task 28 で hinoko は画像（<img>）になり SVG座標を
+  // 持たなくなったため、共通の BODY/skeleton をまだ使っている shizuku に差し替えた
+  // （この不変条件は体格表 BODY 自体の話で、特定キャラの話ではない）。
   const bodyWidth = (stage) => {
-    const ellipses = svgExtents(characterSvg('hinoko', stage)).filter((s) => s.kind === 'ellipse');
+    const ellipses = svgExtents(characterSvg('shizuku', stage)).filter((s) => s.kind === 'ellipse');
     return Math.max(...ellipses.map((s) => s.maxX - s.minX));
   };
   const feet = (stage) => Math.max(
-    ...svgExtents(characterSvg('hinoko', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY)
+    ...svgExtents(characterSvg('shizuku', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY)
   );
   const legLength = (stage) => Math.max(
-    ...svgExtents(characterSvg('hinoko', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY - s.minY)
+    ...svgExtents(characterSvg('shizuku', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY - s.minY)
   );
 
   assert.ok(bodyWidth(0) < bodyWidth(1), '体が 初期 → 第1進化 で大きくなっていない');
@@ -167,4 +186,43 @@ test('未知のキャラIDは例外', () => {
 
 test('範囲外の形態は例外', () => {
   assert.throws(() => characterSvg('hinoko', 3), /stage/);
+});
+
+// --- Task 28: 画像を持つキャラ（ひのこ）の描画 ---
+
+test('画像を持つキャラ（ひのこ）は3形態とも <img> を返し、srcが対応するPNGを指す', () => {
+  for (const stage of [0, 1, 2]) {
+    const html = characterSvg('hinoko', stage);
+    assert.ok(html.startsWith('<img'), `stage${stage}: <img> ではない`);
+    assert.ok(html.includes(`src="./js/img/hinoko-${stage}.png"`), `stage${stage}: srcが期待どおりでない`);
+  }
+});
+
+test('画像を持たないキャラ（しずく）は今までどおり <svg> を返す', () => {
+  for (const stage of [0, 1, 2]) {
+    const html = characterSvg('shizuku', stage);
+    assert.ok(html.startsWith('<svg'), `stage${stage}: <svg> ではない`);
+  }
+});
+
+test('ひのこの <img> は silhouette のとき本名を出さず、灰色シルエット用クラスが付く', () => {
+  for (const stage of [0, 1, 2]) {
+    const html = characterSvg('hinoko', stage, { silhouette: true });
+    assert.ok(!html.includes('ひのこ'), `stage${stage}: silhouette なのに本名が出た`);
+    assert.ok(html.includes('class="char-silhouette"'), `stage${stage}: シルエット用クラスが付いていない`);
+    assert.ok(html.includes('alt="みかいほうの キャラクター"'), `stage${stage}: altが未解放向けでない`);
+  }
+});
+
+test('ひのこの <img> はsizeがwidth/heightに反映される（読み込み前のレイアウト崩れ防止）', () => {
+  const html = characterSvg('hinoko', 0, { size: 240 });
+  assert.ok(html.includes('width="240"'));
+  assert.ok(html.includes('height="240"'));
+});
+
+test('artPath はキャラIDと形態からPNGパスを組み立てる', () => {
+  assert.equal(artPath('hinoko', 1), './js/img/hinoko-1.png');
+  assert.equal(hasArt('hinoko', 2), true);
+  assert.equal(hasArt('shizuku', 0), false);
+  assert.equal(hasArt('hinoko', 3), false); // 範囲外の形態は持っていない扱い
 });

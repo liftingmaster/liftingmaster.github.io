@@ -1,4 +1,5 @@
 import { getCharacter } from '../core/characters.js';
+import { hasArt, artPath } from './artManifest.js';
 
 /**
  * 形態ごとの体格。
@@ -129,6 +130,14 @@ export function characterSvg(charId, stage, options = {}) {
     throw new Error(`invalid stage: ${stage}`);
   }
   const { size = 100, silhouette = false } = options;
+
+  if (hasArt(charId, stage)) {
+    // 未解放キャラの本名を alt/aria-label に出さない（SVG版と同じルール）。
+    // silhouette のときは img自体もグレーの影に変える（CSS の .char-silhouette）。
+    const label = silhouette ? 'みかいほうの キャラクター' : char.name;
+    const cls = silhouette ? ' class="char-silhouette"' : '';
+    return `<img src="${artPath(charId, stage)}" width="${size}" height="${size}" alt="${label}" aria-label="${label}"${cls}>`;
+  }
 
   const palette = silhouette
     ? { main: SILHOUETTE, dark: SILHOUETTE, light: SILHOUETTE, accent: SILHOUETTE }
