@@ -1,4 +1,5 @@
 import { load, save, STORAGE_KEY } from './storage.js';
+import { installImgFallback } from './core/imgFallback.js';
 
 const SCREENS = {};   // 名前 -> render 関数（各 view が登録する）
 const root = document.getElementById('app');
@@ -148,6 +149,10 @@ async function boot() {
   }
 
   app.go(app.currentPlayer() ? 'home' : 'playerSelect');
+
+  // 画像キャラ（Task 28〜）の読み込み失敗をSVGへ描き直すフォールバック。
+  // 1回だけ登録すれば、以後アプリが描く全ての <img> をまとめて拾う
+  installImgFallback();
 
   // Service Worker（file:// では登録できないので握りつぶす）
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

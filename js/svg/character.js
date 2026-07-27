@@ -119,33 +119,15 @@ const PARTS = {
                 <circle cx="74" cy="18" r="2.2" fill="${c.accent}"/>` : ''}`,
 };
 
-/**
- * キャラのSVGを文字列で返す。
- * stage: 0=初期 / 1=第1進化 / 2=第2進化
- * options: { size = 100, silhouette = false }
- */
-export function characterSvg(charId, stage, options = {}) {
-  const char = getCharacter(charId);
-  if (!Number.isInteger(stage) || stage < 0 || stage > 2) {
-    throw new Error(`invalid stage: ${stage}`);
-  }
-  const { size = 100, silhouette = false } = options;
-
-  if (hasArt(charId, stage)) {
-    // 未解放キャラの本名を alt/aria-label に出さない（SVG版と同じルール）。
-    // silhouette のときは img自体もグレーの影に変える（CSS の .char-silhouette）。
-    const label = silhouette ? 'みかいほうの キャラクター' : char.name;
-    const cls = silhouette ? ' class="char-silhouette"' : '';
-    return `<img src="${artPath(charId, stage)}" width="${size}" height="${size}" alt="${label}" aria-label="${label}"${cls}>`;
-  }
-
+/** コード組み立てのSVGを実際に作る（characterSvg / svgFallback の共通部分） */
+function drawSvg(char, stage, { size, silhouette }) {
   const palette = silhouette
     ? { main: SILHOUETTE, dark: SILHOUETTE, light: SILHOUETTE, accent: SILHOUETTE }
     : { main: char.color, dark: shade(char.color, -0.3), light: shade(char.color, 0.45), accent: ACCENT };
 
   const p = BODY[stage];
-  const parts = PARTS[charId];
-  if (!parts) throw new Error(`no parts for character: ${charId}`);
+  const parts = PARTS[char.id];
+  if (!parts) throw new Error(`no parts for character: ${char.id}`);
 
   const body = silhouette
     ? `<ellipse cx="50" cy="${p.bodyY}" rx="${p.bodyRx}" ry="${p.bodyRy}" fill="${SILHOUETTE}"/>
@@ -159,4 +141,50 @@ export function characterSvg(charId, stage, options = {}) {
   ${parts(stage, palette)}
   ${body}
 </svg>`;
+}
+
+/**
+ * キャラを文字列で返す。
+ * stage: 0=初期 / 1=第1進化 / 2=第2進化
+ * options: { size = 100, silhouette = false }
+ *
+ * 画像を持つキャラ（js/svg/artManifest.js の ART）は <img> を、それ以外は
+ * 今までどおりコード組み立ての <svg> を返す。呼び出し側はどちらも同じように
+ * innerHTML に入れるだけでよい。
+ *
+ * <img> には data-char-id / data-stage / data-size / data-silhouette を
+ * 持たせてある。画像の読み込みに失敗したとき（js/core/imgFallback.js）に、
+ * 追加の状態を持たずにこの関数の代わりに svgFallback() でSVGへ描き直すため。
+ */
+export function characterSvg(charId, stage, options = {}) {
+  const char = getCharacter(charId);
+  if (!Number.isInteger(stage) || stage < 0 || stage > 2) {
+    throw new Error(`invalid stage: ${stage}`);
+  }
+  const { size = 100, silhouette = false } = options;
+
+  if (hasArt(charId, stage)) {
+    // 未解放キャラの本名を alt/aria-label に出さない（SVG版と同じルール）。
+    // silhouette のときは img自体もグレーの影に変える（CSS の .char-silhouette）。
+    const label = silhouette ? 'みかいほうの キャラクター' : char.name;
+    const cls = silhouette ? ' class="char-silhouette"' : '';
+    return `<img src="${artPath(charId, stage)}" width="${size}" height="${size}" alt="${label}" aria-label="${label}"${cls} data-char-id="${charId}" data-stage="${stage}" data-size="${size}" data-silhouette="${silhouette}">`;
+  }
+
+  return drawSvg(char, stage, { size, silhouette });
+}
+
+/**
+ * 画像の読み込みに失敗したときのフォールバック専用。
+ * hasArt の判定を無視して、必ずコード組み立てのSVGを返す
+ * （画像を持つキャラでも、SVG描画コード自体は残っている＝Task28のPARTS参照）。
+ * 通常の画面からは呼ばない。js/core/imgFallback.js の error ハンドラ専用。
+ */
+export function svgFallback(charId, stage, options = {}) {
+  const char = getCharacter(charId);
+  if (!Number.isInteger(stage) || stage < 0 || stage > 2) {
+    throw new Error(`invalid stage: ${stage}`);
+  }
+  const { size = 100, silhouette = false } = options;
+  return drawSvg(char, stage, { size, silhouette });
 }

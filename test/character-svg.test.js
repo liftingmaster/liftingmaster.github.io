@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARACTERS } from '../js/core/characters.js';
-import { characterSvg } from '../js/svg/character.js';
+import { characterSvg, svgFallback } from '../js/svg/character.js';
 import { hasArt, artPath } from '../js/svg/artManifest.js';
 import { svgExtents } from './helpers/svg-extents.js';
 
@@ -145,6 +145,9 @@ test('9体×3形態のどの図形も viewBox（0..100）からはみ出さな�
 test('シルエット表示でも viewBox からはみ出さない', () => {
   for (const c of CHARACTERS) {
     for (const stage of [0, 1, 2]) {
+      // 画像（<img>）は図形を持たないためループの中身が実行されず素通りするだけ。
+      // 意図的な素通り（見落としではない）だと分かるように明示しておく。
+      if (hasArt(c.id, stage)) continue;
       for (const s of svgExtents(characterSvg(c.id, stage, { silhouette: true }))) {
         assert.ok(
           s.minX >= 0 && s.minY >= 0 && s.maxX <= 100 && s.maxY <= 100,
@@ -225,4 +228,41 @@ test('artPath はキャラIDと形態からPNGパスを組み立てる', () => {
   assert.equal(hasArt('hinoko', 2), true);
   assert.equal(hasArt('shizuku', 0), false);
   assert.equal(hasArt('hinoko', 3), false); // 範囲外の形態は持っていない扱い
+});
+
+// --- 画像読み込み失敗時のフォールバック（js/core/imgFallback.js）が使うデータ ---
+
+test('ひのこの <img> は、フォールバックが状態なしで描き直せるだけの data-* を持つ', () => {
+  const html = characterSvg('hinoko', 1, { size: 120, silhouette: true });
+  assert.ok(html.includes('data-char-id="hinoko"'), 'data-char-id が無い');
+  assert.ok(html.includes('data-stage="1"'), 'data-stage が無い');
+  assert.ok(html.includes('data-size="120"'), 'data-size が無い');
+  assert.ok(html.includes('data-silhouette="true"'), 'data-silhouette が無い');
+});
+
+test('画像を持たないキャラの <svg> には data-char-id 等は付かない（<img> 専用の仕組みのため）', () => {
+  const html = characterSvg('shizuku', 0);
+  assert.ok(!html.includes('data-char-id'), 'SVGにも data-char-id が付いてしまっている');
+});
+
+test('svgFallback は hasArt を無視して必ずSVGを返す（画像読み込み失敗時の描き直し用）', () => {
+  for (const stage of [0, 1, 2]) {
+    const svg = svgFallback('hinoko', stage);
+    assert.ok(svg.startsWith('<svg'), `stage${stage}: <svg> ではない`);
+    assert.ok(svg.includes('aria-label="ひのこ"'), `stage${stage}: 通常表示なのに本名が出ていない`);
+  }
+});
+
+test('svgFallback も silhouette のときは本名を出さない', () => {
+  const svg = svgFallback('hinoko', 0, { silhouette: true });
+  assert.ok(!svg.includes('ひのこ'));
+  assert.ok(svg.includes('aria-label="みかいほうの キャラクター"'));
+});
+
+test('svgFallback は画像を持たないキャラ・不正な入力でも characterSvg と同じ例外を出す', () => {
+  assert.throws(() => svgFallback('nazono', 0), /nazono/);
+  assert.throws(() => svgFallback('hinoko', 3), /stage/);
+  // 画像を持たないキャラでも普通に使える（将来 imgFallback 経由で来ることは無いが、
+  // hasArt を無視するという仕様どおりであることの確認）
+  assert.ok(svgFallback('shizuku', 0).startsWith('<svg'));
 });
