@@ -126,3 +126,15 @@ Service Worker はキャッシュ優先で動くため、これを忘れると�
 9体すべてオリジナル。SVG をコードで生成しているため画像ファイルを持たない。
 `tools/preview-characters.html` を開くと27パターン（9体 × 3進化段階）を
 一覧できる。
+
+## 配布まえの確認（キャッシュ対象の突合）
+
+`sw.js` の `ASSETS` に載っていないファイルは、オフラインで読み込めずその画面が壊れる。
+ファイルを増やしたときは、次のコマンドで漏れがないか突合すること。
+
+```bash
+node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const listed=new Set([...sw.matchAll(/'\.\/([^']*)'/g)].map(m=>m[1]).filter(Boolean));const walk=(d,a=[])=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=d+'/'+e.name;if(e.isDirectory()){if(['node_modules','.git','.superpowers','test','tools','docs'].includes(e.name))continue;walk(p,a);}else a.push(p.replace('./',''));}return a;};const onDisk=walk('.').filter(f=>/\.(js|css|html|json|png)$/.test(f)&&f!=='package.json'&&f!=='sw.js');const missing=onDisk.filter(f=>!listed.has(f));console.log(missing.length?'漏れ: '+missing.join(', '):'漏れなし');"
+```
+
+あわせて `CACHE_NAME` の版を必ず上げること。上げないと古いキャッシュが配られ、
+変更が端末に届かない。
