@@ -2,7 +2,7 @@
  * オフラインで動かすためのキャッシュ。
  * ファイルを変えたら CACHE_NAME の版を上げること（古いキャッシュが残るため）。
  */
-const CACHE_NAME = 'liftingmaster-v6';
+const CACHE_NAME = 'liftingmaster-v8';
 
 // ファイルを増やしたら ASSETS にも足すこと。足し忘れるとオフラインでその画面が壊れる。
 // 突合方法は README の「配布」の節を参照
@@ -42,6 +42,8 @@ const ASSETS = [
   './js/views/logbook.js',
   './js/views/settings.js',
   './js/views/approval.js',
+  './js/views/passwordGate.js',
+  './js/views/evolutionEffect.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];

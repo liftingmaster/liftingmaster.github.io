@@ -1,5 +1,6 @@
 import { verifyText } from '../crypto.js';
 import { approvePending, rejectPending } from '../core/player.js';
+import { parseCountInput } from './recordInput.js';
 
 export function register(app) {
   app.registerScreen('approval', render);
@@ -146,8 +147,9 @@ function renderList(root, app, player) {
     fix.addEventListener('click', () => {
       const input = prompt('ただしい かいすう（1〜9999）', String(q.count));
       if (input === null) return;
-      const n = Number(input);
-      if (!Number.isInteger(n) || n < 1 || n > 9999) return app.toast('1〜9999の せいすうを いれてください');
+      // きろく帳の「なおす」と同じ判定を使う（'0x1e' が 30 として通らないように）
+      const n = parseCountInput(input);
+      if (n === null) return app.toast('1〜9999の せいすうを いれてください');
       approveOne(app, q.id, n);
     });
 

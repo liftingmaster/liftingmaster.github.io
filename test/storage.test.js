@@ -297,6 +297,86 @@ test('validateState: 正しい pendingEffects は通す', () => {
   assert.deepEqual(validateState(s), { ok: true, errors: [] });
 });
 
+// --- 記録の修正機能（仕様 §2.5・§3.1・§3.3）: charId/grantedExp/originalCount/editedAt ---
+
+test('validateState: 新フィールド(charId/grantedExp/originalCount/editedAt)を持たない旧データの記録を不正としない', () => {
+  const s = createInitialState();
+  const p = player();
+  p.records.push({ id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: NOW });
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: 正しい charId/grantedExp/originalCount/editedAt を持つ新データの記録を受理する', () => {
+  const s = createInitialState();
+  const p = player();
+  p.records.push({
+    id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: NOW,
+    charId: 'hinoko', grantedExp: 18, originalCount: 8, editedAt: NOW,
+  });
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: charId が未知のキャラIDなら記録を不正と判定する', () => {
+  const s = createInitialState();
+  const p = player();
+  p.records.push({
+    id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: NOW, charId: 'nazono-character',
+  });
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+  assert.equal(validateState(s).ok, false, '未知の charId は不正のはず');
+});
+
+test('validateState: grantedExp が非数値なら記録を不正と判定する', () => {
+  for (const bad of ['じゅう', Number.NaN, {}, []]) {
+    const s = createInitialState();
+    const p = player();
+    p.records.push({ id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: NOW, grantedExp: bad });
+    s.players.push(p);
+    s.activePlayerId = 'p1';
+    const r = validateState(s);
+    assert.equal(r.ok, false, `grantedExp=${JSON.stringify(bad)} は不正のはず`);
+  }
+});
+
+test('validateState: grantedExp が負の数なら記録を不正と判定する', () => {
+  const s = createInitialState();
+  const p = player();
+  p.records.push({ id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: NOW, grantedExp: -1 });
+  s.players.push(p);
+  s.activePlayerId = 'p1';
+  assert.equal(validateState(s).ok, false);
+});
+
+test('validateState: originalCount が範囲外（0・10000・小数）なら記録を不正と判定する', () => {
+  for (const bad of [0, 10000, 1.5]) {
+    const s = createInitialState();
+    const p = player();
+    p.records.push({ id: 'r1', date: '2026-07-26', mode: 'no', count: 5, createdAt: NOW, originalCount: bad });
+    s.players.push(p);
+    s.activePlayerId = 'p1';
+    const r = validateState(s);
+    assert.equal(r.ok, false, `originalCount=${bad} は不正のはず`);
+  }
+});
+
+// 仕様§3.3: `{ type: 'edited', exp }` は count を持たない（承認の `{ type: 'approved', count, exp }`
+// と違い1件の修正につき1エントリのため count が不要）。既存の validatePendingEffects は
+// count を必須にしているため、実装側で count を省略可にする対応が必要になる想定。
+test('validateState: pendingEffects の type が edited のとき count が無くても受理する（仕様§3.3）', () => {
+  const s = stateWith((p) => { p.pendingEffects = [{ type: 'edited', exp: 30 }]; });
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
+test('validateState: pendingEffects の edited は exp が負（EXPが減った）でも受理する', () => {
+  const s = stateWith((p) => { p.pendingEffects = [{ type: 'edited', exp: -12 }]; });
+  assert.deepEqual(validateState(s), { ok: true, errors: [] });
+});
+
 test('validateState: プレイヤーの createdAt が ISO タイムスタンプでなければ弾く', () => {
   for (const bad of ['2026-07-26', 'kyou', '', undefined, 12345]) {
     const r = validateState(stateWith((p) => { p.createdAt = bad; }));

@@ -57,6 +57,23 @@ function validateRecord(r, where, errors) {
   if (r.mode !== 'no' && r.mode !== 'one') errors.push(`${where}: mode が不正 (${r.mode})`);
   if (!Number.isInteger(r.count) || r.count < 1 || r.count > 9999) errors.push(`${where}: count が範囲外 (${r.count})`);
   if (!isValidIsoTimestamp(r.createdAt)) errors.push(`${where}: createdAt が不正 (${r.createdAt})`);
+
+  // 記録の修正機能（仕様 §2.5・§3.1）で足した4項目。旧データは持っていないので、
+  // 無いこと自体は不正としない（lastBackupAt を足したときと同じ扱い）。
+  // 値が入っているときだけ、形を厳しく見る
+  if (r.charId !== undefined && !VALID_CHAR_IDS.has(r.charId)) {
+    errors.push(`${where}: charId が不正 (${r.charId})`);
+  }
+  if (r.grantedExp !== undefined && (!Number.isFinite(r.grantedExp) || r.grantedExp < 0)) {
+    errors.push(`${where}: grantedExp が不正 (${r.grantedExp})`);
+  }
+  if (r.originalCount !== undefined
+    && (!Number.isInteger(r.originalCount) || r.originalCount < 1 || r.originalCount > 9999)) {
+    errors.push(`${where}: originalCount が範囲外 (${r.originalCount})`);
+  }
+  if (r.editedAt !== undefined && !isValidIsoTimestamp(r.editedAt)) {
+    errors.push(`${where}: editedAt が不正 (${r.editedAt})`);
+  }
 }
 
 /**
@@ -72,8 +89,16 @@ function validatePendingEffects(list, where, errors) {
     const at = `${where}.pendingEffects[${i}]`;
     if (!e || typeof e !== 'object' || Array.isArray(e)) { errors.push(`${at}: オブジェクトでない`); return; }
     if (typeof e.type !== 'string' || e.type === '') errors.push(`${at}: type が不正 (${e.type})`);
-    if (!Number.isFinite(e.count)) errors.push(`${at}: count が数値でない (${e.count})`);
-    if (!Number.isFinite(e.exp)) errors.push(`${at}: exp が数値でない (${e.exp})`);
+    // 種別ごとに形が違う（仕様 §3.3）。
+    // - approved: `{ type, count, exp }`。何件みとめたかを出すので count が要る
+    // - edited:   `{ type, exp }`。1件の修正につき1エントリなので count は無い。
+    //             EXPが減る修正もあるため exp は負の値を受理する
+    if (e.type === 'edited') {
+      if (!Number.isFinite(e.exp)) errors.push(`${at}: exp が数値でない (${e.exp})`);
+    } else {
+      if (!Number.isFinite(e.count)) errors.push(`${at}: count が数値でない (${e.count})`);
+      if (!Number.isFinite(e.exp)) errors.push(`${at}: exp が数値でない (${e.exp})`);
+    }
   });
 }
 

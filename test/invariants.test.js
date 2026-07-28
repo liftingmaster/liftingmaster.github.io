@@ -15,7 +15,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** 配信対象になるファイルを列挙する（開発用のフォルダは除く） */
 function servableFiles() {
-  const SKIP = new Set(['node_modules', '.git', '.superpowers', 'incoming-art', 'test', 'tools', 'docs', 'icons']);
+  // .claude は開発ツールの設定（launch.json など）。配信もキャッシュもしない。
+  // ここに入れ忘れると sw.js の ASSETS に足せと言われるが、足すと GitHub Pages で
+  // 配信されなかったときに cache.addAll がまるごと失敗し、オフライン対応が死ぬ
+  const SKIP = new Set(['node_modules', '.git', '.claude', '.superpowers', 'incoming-art', 'test', 'tools', 'docs', 'icons']);
   const out = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -59,6 +62,30 @@ test('sw.js の ASSETS に、存在しないファイルが載っていない', 
     try { statSync(join(ROOT, f)); return false; } catch { return true; }
   });
   assert.deepEqual(ghosts, [], `sw.js が実在しないファイルを指している: ${ghosts.join(', ')}`);
+});
+
+// 記録の修正機能（docs/superpowers/specs/2026-07-27-record-edit-and-dual-mode.md §3.4/§3.5）で
+// 新設予定の2ファイル。sw.js の ASSETS に登録し忘れると、オフライン端末でこの機能だけ壊れる
+// （progress.md の「罠1」と同種）。CACHE_NAME を上げ忘れると修正が端末に届かない（罠2）。
+test('記録の修正機能で新設する js/views/passwordGate.js・evolutionEffect.js が存在し、ASSETSに載っている', () => {
+  const expected = ['js/views/passwordGate.js', 'js/views/evolutionEffect.js'];
+  for (const rel of expected) {
+    let exists = true;
+    try { statSync(join(ROOT, rel)); } catch { exists = false; }
+    assert.ok(exists, `${rel} が存在しない（仕様§3.4/§3.5で新設予定）`);
+  }
+  const listed = swAssets();
+  for (const rel of expected) {
+    assert.ok(listed.has(rel), `sw.js の ASSETS に ${rel} が無い`);
+  }
+});
+
+test('記録の修正機能の新設ファイル追加に合わせて CACHE_NAME が v6 から上がっている', () => {
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  assert.doesNotMatch(
+    sw, /CACHE_NAME\s*=\s*'liftingmaster-v6'/,
+    'js/views/passwordGate.js・evolutionEffect.js を追加したら CACHE_NAME も上げること',
+  );
 });
 
 // js/core を DOM から隔離しているからこそ、ブラウザ無しで全ロジックをテストできる。

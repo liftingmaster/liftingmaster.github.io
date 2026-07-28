@@ -1,6 +1,6 @@
 import { renderNav } from '../app.js';
 import {
-  switchChar, claimUnlock, setNickname, stageOf, displayName, maxLevelEver,
+  switchChar, claimUnlock, setNickname, displayStageOf, displayName, maxLevelEver,
 } from '../core/player.js';
 import { pendingUnlocks } from '../core/unlock.js';
 import { levelFromExp } from '../core/exp.js';
@@ -32,7 +32,7 @@ function render(root, app) {
     cell.className = 'dex-cell';
     if (isActive) cell.style.outline = '3px solid var(--accent)';
     cell.innerHTML = `
-      ${characterSvg(entry.charId, stageOf(player, entry.charId), { size: 100 })}
+      ${characterSvg(entry.charId, displayStageOf(player, entry.charId), { size: 100 })}
       <div style="font-weight:bold">${escapeHtml(displayName(player, entry.charId))}</div>
       <div class="muted">Lv ${lv}${isActive ? ' ・そだてちゅう' : ''}</div>`;
     cell.addEventListener('click', () => openActions(root, app, entry.charId, isActive));

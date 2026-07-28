@@ -40,6 +40,30 @@ export function stageOf(player, charId) {
   return evolutionStage(charId, { level, ...achievements(player) });
 }
 
+/**
+ * 画面が描くべき進化段階。
+ *
+ * 記録を直してEXPが減ると、生の stageOf は前の段階へ戻りうる（仕様 §2.2.3）。
+ * レベルの数字が下がるのは受け入れるが、「一度見せた進化の姿」が親の入力ミス修正の
+ * 副作用で子供の前で格下げされて見えるのは体感の重さが違う。そこで evolvedStages
+ * （演出済みの段階）を下限にしたラチェットをかけ、絵だけは戻らないようにする。
+ * これは「characterSvg に何を渡すか」だけのための値。進化の判定・新しい進化の検知・
+ * 進化条件のチェックリストの正誤には、必ず生の stageOf を使うこと
+ * （ラチェットを判定に使うと、ホームの「しんかの じょうけん」と
+ * ずかん詳細の表示が食い違う）。
+ *
+ * evolvedStages は手編集バックアップから来ることがあるので 0〜2 に丸める。
+ * 範囲外の値をそのまま返すと js/svg/character.js が undefined を引いて
+ * home/party/dex/dexDetail が例外で真っ白になる
+ */
+export function displayStageOf(player, charId) {
+  const entry = charEntry(player, charId);
+  const shown = Array.isArray(entry.evolvedStages)
+    ? entry.evolvedStages.filter((s) => Number.isFinite(s))
+    : [];
+  return Math.min(2, Math.max(stageOf(player, charId), 0, ...shown));
+}
+
 /** 次の進化への進捗。最終形態なら null */
 export function progressOf(player, charId) {
   const stage = stageOf(player, charId);
@@ -95,7 +119,9 @@ function commitRecord(player, record) {
     records: next.records, record, charId: entry.charId, charExp: entry.exp,
   });
 
-  next.records.push(record);
+  // どのキャラに何EXP渡したかを記録自身に残す。あとで「なおす／けす」をしたときに、
+  // 推定ではなく正確に引き直せるのはこの2つがあるおかげ（仕様 §2.2.2）
+  next.records.push({ ...record, charId: entry.charId, grantedExp: gain.exp });
   entry.exp += gain.exp;
 
   const levelAfter = levelFromExp(entry.exp).level;
@@ -161,6 +187,234 @@ export function approvePending(player, { pendingId, count, now }) {
 
   const record = { ...queued, count, approvedAt: now };
   return commitRecord(withoutQueued, record);
+}
+
+/**
+ * 記録の並び順。createdAt 昇順、同値なら records 配列の添字を第2キーにする。
+ * おうちのひとが短時間に続けて入れると createdAt は完全一致しうるので、
+ * ここを決めておかないと同じ操作でも結果が変わってしまう。
+ */
+function makeOrderCmp(records) {
+  const at = new Map(records.map((r, i) => [r.id, i]));
+  return (a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+    return at.get(a.id) - at.get(b.id);
+  };
+}
+
+/**
+ * グループを「空の状態から」リプレイして、キャラごとの付与合計と
+ * 各メンバーの grantedExp を出す。records は書き換えない。
+ *
+ * 文脈（computeGain に渡す records）は「そのメンバーより前に並ぶ記録すべて」。
+ * **後に作られた記録は入れない**。ここを全期間にすると、あとから伸びた自己ベストや
+ * あとから積んだ連続日数が過去の記録に後付けされ、「回数を増やしたのにEXPが減る」
+ * といった逆転が起きる。
+ *
+ * charExp（すくすく Lv20以下／きらめき Lv50以上 のレベル条件に使う）は
+ * **その記録を付けた当時のレベル水準**でなければならない。そこで baseExp
+ * （＝そのキャラの全記録ぶんを引いた出発点）から、並び順に沿って
+ *   - メンバー: このリプレイで計算し直した値
+ *   - メンバー以外: 記録に保存されている grantedExp
+ * を足していく（running）。グループ外の記録を足し忘れると baseExp が実質
+ * 「今のレベル」になり、Lv1のときに付けた はっぱ の記録を Lv28 で消すと
+ * すくすく（×2）が外れて渡した分の半分しか引き戻せない、といったズレが出る。
+ *
+ * totals はメンバーぶんの付与合計だけ（＝差分に使う額）。running とは別に数える。
+ */
+function replayGroup(records, specs, baseExp, cmp) {
+  const ownerOf = new Map(specs.map((s) => [s.id, s.charId]));
+  const running = new Map(baseExp);
+  const totals = new Map();
+  const granted = new Map();
+  const acc = [];
+  for (const r of [...records].sort(cmp)) {
+    const charId = ownerOf.get(r.id);
+    if (charId !== undefined) {
+      const gain = computeGain({
+        records: acc, record: r, charId, charExp: running.get(charId) || 0,
+      });
+      running.set(charId, (running.get(charId) || 0) + gain.exp);
+      totals.set(charId, (totals.get(charId) || 0) + gain.exp);
+      granted.set(r.id, gain.exp);
+    } else if (Number.isFinite(r.grantedExp) && running.has(r.charId)) {
+      // グループ外・非メンバーの記録は計算し直さない。保存されている値をそのまま
+      // 積んで、次のメンバーが「当時の水準」で判定されるようにするだけ
+      running.set(r.charId, running.get(r.charId) + r.grantedExp);
+    }
+    acc.push(r);
+  }
+  return { totals, granted };
+}
+
+/**
+ * 確定済み記録1件の回数訂正・削除の共通処理。
+ *
+ * 方式は「対称な before/after リプレイ」（2026-07-28 第2回改訂）。
+ * 同じ日・同じモードのグループを、**変更前と変更後でまったく同じやり方で
+ * 2回リプレイし、その差分だけ**をキャラのEXPに反映する。
+ *
+ *   1. リプレイ対象 = グループの新データ全部 ＋ 対象記録 R 自身
+ *      （R が旧データなら持ち主は activeCharId。R 以外の旧データの兄弟は
+ *      対象にしない＝EXPを動かさないが、dailyBest などの文脈には参加する）
+ *   2. baseExp[c] = max(0, c.exp − そのキャラのグループ内 grantedExp 合計)。
+ *      before と after で同じ baseExp を使う
+ *   3. exp = max(0, exp + (after − before))。**クランプは最後に1回だけ**
+ *
+ * 引く側だけクランプしたり、引く基準と足す基準を変えたりすると、
+ * 「回数を減らしたのに増える」「0に張り付いたキャラの負債が消えて無からEXPが生まれる」
+ * といった保存則の破れが出る。before と after を対称に保つのが要点。
+ *
+ * @param {boolean} remove true なら削除（count は使わない）
+ */
+function applyRecordChange(player, { recordId, count, now, remove }) {
+  if (!player.records.some((r) => r.id === recordId)) {
+    throw new Error(`record not found: ${recordId}`);
+  }
+
+  const next = clone(player);
+  const index = next.records.findIndex((r) => r.id === recordId);
+  const target = next.records[index];
+  const { date, mode } = target;
+
+  const ownedIds = new Set(next.chars.map((c) => c.charId));
+  // 「新データ」と言えるのは、charId が今も手持ちにあり grantedExp が数値のときだけ。
+  // 手編集バックアップ由来で条件を満たさないものは旧データとして扱う
+  const exact = typeof target.charId === 'string'
+    && Number.isFinite(target.grantedExp)
+    && ownedIds.has(target.charId);
+  const estimated = !exact;
+  if (estimated) activeCharEntry(next); // 育成キャラが手持ちにない状態はここで弾く
+  const ownerOfTarget = exact ? target.charId : next.activeCharId;
+
+  // 記録を書き換える前に、全キャラの「まえ」を控える（stageOf は records を見るため）
+  const snapshots = new Map(next.chars.map((c) => [c.charId, {
+    exp: c.exp,
+    level: levelFromExp(c.exp).level,
+    stage: stageOf(next, c.charId),
+  }]));
+
+  const cmp = makeOrderCmp(next.records);
+
+  const memberSpecs = next.records
+    .filter((r) => r.date === date && r.mode === mode)
+    .filter((r) => r.id === recordId
+      || (Number.isFinite(r.grantedExp) && ownedIds.has(r.charId)))
+    .map((r) => ({ id: r.id, charId: r.id === recordId ? ownerOfTarget : r.charId }));
+
+  // レベル依存特性の判定に使うリプレイの出発点。
+  // **全記録**の grantedExp を引いた「何も記録していなかったころの水準」にする。
+  // グループ内だけを引くと、あとから積んだEXPが残って実質「今のレベル」になり、
+  // 「いつ直したか」で結果が変わってしまう（はっぱ・きらら）。
+  // before/after で同じ値を使うことで、引く基準と足す基準のずれも防ぐ
+  const grantedByChar = new Map();
+  for (const r of next.records) {
+    if (Number.isFinite(r.grantedExp) && ownedIds.has(r.charId)) {
+      grantedByChar.set(r.charId, (grantedByChar.get(r.charId) || 0) + r.grantedExp);
+    }
+  }
+  const baseExp = new Map(next.chars.map(
+    (c) => [c.charId, Math.max(0, c.exp - (grantedByChar.get(c.charId) || 0))],
+  ));
+
+  // before: いまの回数のままリプレイ（records は触らずコピーの上で回す）
+  const beforeRun = replayGroup(
+    next.records.map((r) => ({ ...r })), memberSpecs, baseExp, cmp,
+  );
+
+  if (remove) {
+    next.records.splice(index, 1);
+  } else {
+    // originalCount / editedAt は、直接なおした R にだけ書く。
+    // リプレイで grantedExp が変わっただけの「兄弟」記録には書かない
+    if (target.originalCount === undefined) target.originalCount = target.count;
+    target.count = count;
+    target.editedAt = now;
+    if (estimated) target.charId = ownerOfTarget; // 旧データを新データへ格上げ
+  }
+
+  // after: 変更後の回数（削除なら R 抜き）で、まったく同じやり方でリプレイ
+  const afterSpecs = remove ? memberSpecs.filter((s) => s.id !== recordId) : memberSpecs;
+  const afterRun = replayGroup(next.records, afterSpecs, baseExp, cmp);
+
+  for (const spec of afterSpecs) {
+    const rec = next.records.find((r) => r.id === spec.id);
+    rec.grantedExp = afterRun.granted.get(spec.id);
+  }
+
+  // 差分だけを反映する。クランプはここ1回だけ（途中でクランプすると負債が消える）
+  for (const c of next.chars) {
+    const diff = (afterRun.totals.get(c.charId) || 0) - (beforeRun.totals.get(c.charId) || 0);
+    if (diff !== 0) c.exp = Math.max(0, c.exp + diff);
+  }
+
+  // 進化の検知は、削除も含めて全キャラぶん行う。
+  //
+  // 仕様 §2.2.3 の「回数を減らす訂正でEXPが増えることは計算構造上あり得ない」は
+  // 成立しない（レベル依存特性の切り替わり、兄弟記録の日別ベストが外れることなどで
+  // 増えうる）。ここを絞ると「evolvedTo を返さないのに evolvedStages だけ進み、
+  // 演出を一度も見せないまま絵が変わる」状態になり、その子はその進化を永久に
+  // 見られなくなる。evolvedStages の目的そのものを壊すので、必ず全キャラを見る
+  const charChanges = [];
+  let evolvedTo = null;
+  for (const c of next.chars) {
+    const snap = snapshots.get(c.charId);
+    const expDelta = c.exp - snap.exp;
+    const stageAfter = stageOf(next, c.charId);
+    let charEvolvedTo = null;
+    if (stageAfter > snap.stage && !c.evolvedStages.includes(stageAfter)) {
+      charEvolvedTo = stageAfter;
+      c.evolvedStages.push(stageAfter);
+    }
+    if (c.charId === ownerOfTarget) evolvedTo = charEvolvedTo;
+    // 動いていないキャラは載せない。ただし進化したなら、演出を出すために必ず載せる
+    if (expDelta !== 0 || charEvolvedTo !== null) {
+      charChanges.push({
+        charId: c.charId,
+        expDelta,
+        levelBefore: snap.level,
+        levelAfter: levelFromExp(c.exp).level,
+        stageBefore: snap.stage,
+        evolvedTo: charEvolvedTo,
+      });
+    }
+  }
+
+  const targetSnap = snapshots.get(ownerOfTarget);
+  const targetChar = next.chars.find((c) => c.charId === ownerOfTarget);
+
+  return {
+    player: next,
+    result: {
+      // 見積もりではなく、クランプ後に実際に動いた量（0に張り付いた場合を含む）
+      expDelta: targetChar.exp - targetSnap.exp,
+      charId: ownerOfTarget,
+      levelBefore: targetSnap.level,
+      levelAfter: levelFromExp(targetChar.exp).level,
+      evolvedTo,
+      // 「進化まえの姿」は実際に使った段階でないと嘘になる。evolutionStage は
+      // 満たしている最大の段階を返すだけで1段ずつ上がる保証がなく 0→2 も起こる
+      stageBefore: targetSnap.stage,
+      estimated,
+      // グループ再計算で動いた全キャラ。兄弟キャラのレベル低下・進化を
+      // 画面が拾えるようにするための一覧
+      charChanges,
+    },
+  };
+}
+
+/** 確定済み記録の回数を直す */
+export function editRecord(player, { recordId, count, now }) {
+  return applyRecordChange(player, {
+    recordId, count, now, remove: false,
+  });
+}
+
+/** 確定済み記録を消す（EXPは渡した分だけ引き戻す） */
+export function deleteRecord(player, { recordId, now }) {
+  return applyRecordChange(player, {
+    recordId, count: null, now, remove: true,
+  });
 }
 
 /** 承認待ちを削除する（EXPは動かない） */

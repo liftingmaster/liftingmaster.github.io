@@ -1,5 +1,7 @@
 import { renderNav } from '../app.js';
-import { playerView, progressOf, maxLevelEver } from '../core/player.js';
+import {
+  playerView, progressOf, maxLevelEver, displayStageOf,
+} from '../core/player.js';
 import { pendingUnlocks } from '../core/unlock.js';
 import { characterSvg } from '../svg/character.js';
 import { escapeHtml } from './playerSelect.js';
@@ -14,22 +16,44 @@ function render(root, app) {
 
   const v = playerView(player, app.today());
 
-  // 1. 承認の通知を出して消す
-  if (player.pendingEffects && player.pendingEffects.length > 0) {
-    const total = player.pendingEffects.reduce((s, e) => s + (e.exp || 0), 0);
-    const count = player.pendingEffects.reduce((s, e) => s + (e.count || 0), 0);
-    const note = document.createElement('div');
-    note.className = 'card';
-    note.style.background = '#e9f7ef';
-    note.innerHTML = `<h2>おうちのひとが みとめてくれた！</h2>
-      <p>${count}けんの きろくが ついかされて <b>${total} EXP</b> もらったよ</p>`;
-    root.appendChild(note);
+  // 1. 承認・修正の通知を出して消す。
+  //    種別を混ぜると意味が壊れる（修正なのに「みとめてくれた」と出る、EXPが減った
+  //    ぶんが承認の合計に食い込む）ので、approved と edited は必ず分けて集計する（仕様 §3.3）
+  const effects = Array.isArray(player.pendingEffects) ? player.pendingEffects : [];
+  if (effects.length > 0) {
+    const notes = [];
+    const approved = effects.filter((e) => e && e.type === 'approved');
+    const edited = effects.filter((e) => e && e.type === 'edited');
+
+    if (approved.length > 0) {
+      const total = approved.reduce((s, e) => s + (Number(e.exp) || 0), 0);
+      const count = approved.reduce((s, e) => s + (Number(e.count) || 0), 0);
+      const note = document.createElement('div');
+      note.className = 'card';
+      note.style.background = '#e9f7ef';
+      note.innerHTML = `<h2>おうちのひとが みとめてくれた！</h2>
+        <p>${count}けんの きろくが ついかされて <b>${total} EXP</b> もらったよ</p>`;
+      root.appendChild(note);
+      notes.push(note);
+    }
+
+    if (edited.length > 0) {
+      const total = edited.reduce((s, e) => s + (Number(e.exp) || 0), 0);
+      const detail = total > 0 ? `（+${total} EXP）` : (total < 0 ? `（EXPが ${-total} へった）` : '');
+      const note = document.createElement('div');
+      note.className = 'card';
+      note.style.background = '#eef3fb';
+      note.innerHTML = `<h2>おうちのひとが きろくを なおしたよ${detail}</h2>`;
+      root.appendChild(note);
+      notes.push(note);
+    }
+
     const cleared = app.updatePlayer((p) => ({ ...p, pendingEffects: [] }));
-    // ここは失敗しても安全側（お知らせが残るだけで、EXP は承認時にすでに入っている）に
-    // 倒れるが、「updatePlayer の戻り値を必ず見る」という約束は4か所すべてで守る。
-    // 消せていないなら次に開いたときも同じお知らせが出るので、それを先に伝えておく
-    if (!cleared) {
-      note.insertAdjacentHTML(
+    // ここは失敗しても安全側（お知らせが残るだけで、EXP は承認・修正の時点で
+    // すでに入っている）に倒れるが、「updatePlayer の戻り値を必ず見る」という
+    // 約束は守る。消せていないなら次に開いたときも同じお知らせが出る
+    if (!cleared && notes.length > 0) {
+      notes[notes.length - 1].insertAdjacentHTML(
         'beforeend',
         '<p class="muted">（ほぞんできなかったので、つぎに ひらいたときも でるよ）</p>'
       );
@@ -60,7 +84,7 @@ function render(root, app) {
 
   card.innerHTML = `
     <div style="position:relative;display:inline-block">
-      ${characterSvg(v.charId, v.stage, { size: 200 })}
+      ${characterSvg(v.charId, displayStageOf(player, v.charId), { size: 200 })}
       ${almost ? '<div style="position:absolute;inset:0;border-radius:50%;box-shadow:0 0 34px 10px #ffe08a;pointer-events:none"></div>' : ''}
     </div>
     <h1 style="margin:6px 0 0">${escapeHtml(v.charName)}</h1>

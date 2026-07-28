@@ -1,6 +1,6 @@
 import { renderNav } from '../app.js';
 import { CHARACTERS } from '../core/characters.js';
-import { stageOf } from '../core/player.js';
+import { displayStageOf } from '../core/player.js';
 import { characterSvg } from '../svg/character.js';
 
 export function register(app) {
@@ -27,7 +27,7 @@ function render(root, app) {
     cell.className = 'dex-cell';
     const no = String(c.no).padStart(3, '0');
     cell.innerHTML = has
-      ? `${characterSvg(c.id, stageOf(player, c.id), { size: 90 })}
+      ? `${characterSvg(c.id, displayStageOf(player, c.id), { size: 90 })}
          <div class="muted">No.${no}</div>
          <div style="font-weight:bold">${c.name}</div>`
       : `${characterSvg(c.id, 0, { size: 90, silhouette: true })}
