@@ -98,7 +98,9 @@ test('I1-c 往復不変: 複数キャラ混在でも、片方のキャラの記�
   const p = base('hinoko');
   p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
   const afterR1 = addRecord(p, { id: 'r1', count: 8, mode: 'no', date: '2026-07-20', now: NOW });
-  const switched = switchChar(afterR1.player, 'mokumo');
+  // switchChar は 2026-07-28 の意味論変更で戻り値が { player, result } になった。
+  // このテストは切り替え自体の検知結果には興味がないので player だけ使う
+  const switched = switchChar(afterR1.player, 'mokumo').player;
   const afterR2 = addRecord(switched, { id: 'r2', count: 12, mode: 'no', date: '2026-07-20', now: NOW });
   assert.equal(charExp(afterR2.player, 'hinoko'), 36);
   assert.equal(charExp(afterR2.player, 'mokumo'), 12);
@@ -120,7 +122,7 @@ test('I2 保存則: クランプがないとき、全キャラのexp変化の合
   const p = base('hinoko');
   p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
   const afterR1 = addRecord(p, { id: 'r1', count: 8, mode: 'no', date: '2026-07-20', now: NOW });
-  const switched = switchChar(afterR1.player, 'mokumo');
+  const switched = switchChar(afterR1.player, 'mokumo').player;
   const before = addRecord(switched, { id: 'r2', count: 12, mode: 'no', date: '2026-07-20', now: NOW }).player;
 
   const grantedBefore = new Map(before.records.map((r) => [r.id, r.grantedExp]));
@@ -280,7 +282,7 @@ test('I6 charChanges: グループ再計算で動いた全キャラが入り、�
   p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
   p.chars.push({ charId: 'happa', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] }); // 完全に無関係
   const afterR1 = addRecord(p, { id: 'r1', count: 8, mode: 'no', date: '2026-07-20', now: NOW });
-  const switched = switchChar(afterR1.player, 'mokumo');
+  const switched = switchChar(afterR1.player, 'mokumo').player;
   const afterR2 = addRecord(switched, { id: 'r2', count: 12, mode: 'no', date: '2026-07-20', now: NOW });
 
   const { result } = editRecord(afterR2.player, { recordId: 'r1', count: 10, now: NOW });
@@ -299,7 +301,7 @@ test('I7 charChanges: 兄弟キャラのレベルが下がったとき levelBefo
   const p = base('hinoko');
   p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
   const afterR1 = addRecord(p, { id: 'r1', count: 30, mode: 'no', date: '2026-07-20', now: NOW });
-  const switched = switchChar(afterR1.player, 'mokumo');
+  const switched = switchChar(afterR1.player, 'mokumo').player;
   const afterR2 = addRecord(switched, { id: 'r2', count: 200, mode: 'no', date: '2026-07-20', now: NOW });
   assert.equal(charExp(afterR2.player, 'hinoko'), 135);
   assert.equal(charExp(afterR2.player, 'mokumo'), 510);
@@ -322,7 +324,27 @@ test('I7 charChanges: 兄弟キャラのレベルが下がったとき levelBefo
   assert.equal(hinokoChange.expDelta, 990);
 });
 
-test('I8 charChanges: 兄弟キャラが編集をきっかけに進化条件を満たすと evolvedTo が入り evolvedStages に追記される（欠陥4派生）', () => {
+// 2026-07-28 第2回改訂・意味論そのものを変える判断（安部さん）:
+// 「1体しかEXPは付与できないのに2体がなぜ同時に進化する？」という指摘を受け、
+// 進化演出の検知・evolvedStagesへの追記は「育成中のキャラ（activeCharId）だけ」に
+// 限定する。以下のI8・I9は元々「兄弟キャラが編集をきっかけに進化条件を満たすと
+// evolvedTo が入る」ことを検証していたが、これは新しい意味論では成立しない
+// （育成中でない兄弟キャラは、EXPの増減はcharChangesに載っても、evolvedToは
+// 常にnullでevolvedStagesも追記されない）。
+//
+// 【古い期待値が無効になった理由】
+// 旧テストの mokumo（I8）・shizuku（I9）は、record自体の持ち主（exact charId）とは
+// 別に、addRecordの時点でswitchCharしていたため「たまたま育成中のキャラ」に
+// なっていた（＝進化して見えたのは正当だった）。しかし、記録を編集/削除する
+// 時点で育成キャラを元に戻す（switchCharで戻す）と、EXPの数値そのものは
+// 一切変わらないまま（activeCharIdはEXP計算に関与しないため）、
+// 「育成中でない兄弟」という本来のシナリオになる。このとき旧実装は
+// evolvedTo:1を返してしまうが、新しい意味論ではnullであるべき、というのが
+// 安部さんの判断の核心。
+//
+// 主張を反転させたうえで、「育成キャラに切り替えたら、そこで初めて進化する」
+// （switchCharの新しい進化検知）を続けて検証する。
+test('I8（反転）: 兄弟キャラ(育成中でない)が編集をきっかけに進化条件を満たしても evolvedTo は null・evolvedStagesは空のまま', () => {
   const p = base('hinoko');
   p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
 
@@ -338,26 +360,41 @@ test('I8 charChanges: 兄弟キャラが編集をきっかけに進化条件を�
   assert.equal(levelFromExp(charExp(p, 'mokumo')).level, 14, '前提: もくもはまだLv14');
 
   let cur = addRecord(p, { id: 'r1', count: 100, mode: 'one', date: '2026-07-10', now: '2026-07-10T09:00:00.000Z' }).player;
-  const switched = switchChar(cur, 'mokumo');
-  cur = addRecord(switched, { id: 'r2', count: 30, mode: 'one', date: '2026-07-10', now: '2026-07-10T09:01:00.000Z' }).player;
+  cur = switchChar(cur, 'mokumo').player;
+  cur = addRecord(cur, { id: 'r2', count: 30, mode: 'one', date: '2026-07-10', now: '2026-07-10T09:01:00.000Z' }).player;
   assert.equal(stageOf(cur, 'mokumo'), 0, '前提: まだ進化していない（レベル条件だけが足りない）');
 
+  // ここがI8の反転点: 編集する前に育成キャラをひのこへ戻す。
+  // これでもくもは「本当に育成中でない兄弟」になる（EXPの数値はswitchCharの
+  // 影響を受けないので、以下の数値は元のI8と全く同じになる）
+  cur = switchChar(cur, 'hinoko').player;
+
   // r1(ひのこ)を100→5に減らす。もくものr2は「その日のベスト」が5に下がるので
-  // delta=25まで解放され、fuwafuwa(×2)で+50。もくもがLv15に届いて進化する
+  // delta=25まで解放され、fuwafuwa(×2)で+50。もくものexpはLv15に届くが、
+  // もくもは育成中ではないので進化は検知されない
   const { player, result } = editRecord(cur, { recordId: 'r1', count: 5, now: '2026-07-10T09:02:00.000Z' });
-  assert.equal(charExp(player, 'mokumo'), (totalExpForLevel(15) - 10) + 50);
+  assert.equal(charExp(player, 'mokumo'), (totalExpForLevel(15) - 10) + 50, 'EXPの数値自体はswitchCharの有無で変わらない');
   assert.equal(levelFromExp(charExp(player, 'mokumo')).level, 15);
-  assert.equal(stageOf(player, 'mokumo'), 1, '進化条件を満たした');
+  assert.equal(stageOf(player, 'mokumo'), 1, '潜在段階（判定用）は満たしている。意味は変えない');
 
   const mokumoChange = result.charChanges.find((c) => c.charId === 'mokumo');
-  assert.ok(mokumoChange, 'もくもがcharChangesに入っている');
+  assert.ok(mokumoChange, 'もくものEXP増減はcharChangesに載る（レベル低下の確認に必要なので維持）');
   assert.equal(mokumoChange.expDelta, 50);
+  assert.equal(mokumoChange.levelBefore, 14);
+  assert.equal(mokumoChange.levelAfter, 15);
   assert.equal(mokumoChange.stageBefore, 0);
-  assert.equal(mokumoChange.evolvedTo, 1, '欠陥4-Bと同種: 兄弟の進化がcharChangesから読み取れないと演出を出せない');
-  assert.deepEqual(charEntry(player, 'mokumo').evolvedStages, [1], 'evolvedStagesにも追記されている');
+  assert.equal(mokumoChange.evolvedTo, null, '育成中でないもくもは進化しない（安部さんの判断の核心）');
+  assert.deepEqual(charEntry(player, 'mokumo').evolvedStages, [], 'evolvedStagesも空のまま（絵は進化しない）');
+
+  // 続き: 育成キャラをもくもに切り替えたら、そこで初めて進化が検知される
+  const { player: switchedPlayer, result: switchResult } = switchChar(player, 'mokumo');
+  assert.equal(switchResult.charId, 'mokumo');
+  assert.equal(switchResult.stageBefore, 0);
+  assert.equal(switchResult.evolvedTo, 1, '育成キャラに切り替えたその瞬間に進化する');
+  assert.deepEqual(charEntry(switchedPlayer, 'mokumo').evolvedStages, [1]);
 });
 
-test('I9 charChanges: 削除で兄弟キャラが進化しても evolvedTo が入る（欠陥5: viewが拾えるようにするため）', () => {
+test('I9（反転）: 削除で兄弟キャラ(育成中でない)が進化条件を満たしても evolvedTo は null。切り替えれば初めて進化する', () => {
   const p = base('hinoko');
   p.chars.push({ charId: 'shizuku', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
 
@@ -368,27 +405,40 @@ test('I9 charChanges: 削除で兄弟キャラが進化しても evolvedTo が�
     });
   }
   let cur = addRecord(p, { id: 'r1', count: 400, mode: 'no', date: '2026-07-10', now: '2026-07-10T09:00:00.000Z' }).player;
-  const switched = switchChar(cur, 'shizuku');
-  cur = addRecord(switched, { id: 'r2', count: 300, mode: 'no', date: '2026-07-10', now: '2026-07-10T09:01:00.000Z' }).player;
+  cur = switchChar(cur, 'shizuku').player;
+  cur = addRecord(cur, { id: 'r2', count: 300, mode: 'no', date: '2026-07-10', now: '2026-07-10T09:01:00.000Z' }).player;
   assert.equal(charExp(cur, 'hinoko'), 1800);
   assert.equal(charExp(cur, 'shizuku'), 0, '前提: ひのこの400かいに阻まれて0のまま');
   assert.equal(stageOf(cur, 'shizuku'), 0);
 
+  // I9の反転点: 削除する前に育成キャラをひのこへ戻す。しずくは本当に育成中でない
+  // 兄弟になる（EXPの数値はswitchCharの影響を受けないので元のI9と同じ数値になる）
+  cur = switchChar(cur, 'hinoko').player;
+
   const { player, result } = deleteRecord(cur, { recordId: 'r1', now: NOW });
   assert.equal(charExp(player, 'hinoko'), 0);
-  assert.equal(charExp(player, 'shizuku'), 1080, '欠陥4-B: しずくが0→1080に伸びる');
+  assert.equal(charExp(player, 'shizuku'), 1080, 'しずくのEXPが0→1080に伸びる（数値はI9のまま）');
   assert.equal(levelFromExp(1080).level, 12);
-  assert.equal(stageOf(player, 'shizuku'), 1);
+  assert.equal(stageOf(player, 'shizuku'), 1, '潜在段階（判定用）は満たしている');
 
   assert.equal(result.charId, 'hinoko', 'トップレベルの result は削除対象(ひのこ)のもの');
   assert.equal(result.evolvedTo, null, 'ひのこ自身は進化しない');
 
   const shizukuChange = result.charChanges.find((c) => c.charId === 'shizuku');
-  assert.ok(shizukuChange, '削除でもしずくがcharChangesに入っている（欠陥5の核心）');
+  assert.ok(shizukuChange, 'しずくのEXP増減はcharChangesに載る（レベル上昇の確認に必要なので維持）');
   assert.equal(shizukuChange.expDelta, 1080);
-  assert.equal(shizukuChange.evolvedTo, 1);
+  assert.equal(shizukuChange.levelBefore, 1);
+  assert.equal(shizukuChange.levelAfter, 12);
   assert.equal(shizukuChange.stageBefore, 0);
-  assert.deepEqual(charEntry(player, 'shizuku').evolvedStages, [1]);
+  assert.equal(shizukuChange.evolvedTo, null, '育成中でないしずくは進化しない');
+  assert.deepEqual(charEntry(player, 'shizuku').evolvedStages, [], 'evolvedStagesも空のまま');
+
+  // 続き: 育成キャラをしずくに切り替えたら、そこで初めて進化が検知される
+  const { player: switchedPlayer, result: switchResult } = switchChar(player, 'shizuku');
+  assert.equal(switchResult.charId, 'shizuku');
+  assert.equal(switchResult.stageBefore, 0);
+  assert.equal(switchResult.evolvedTo, 1);
+  assert.deepEqual(charEntry(switchedPlayer, 'shizuku').evolvedStages, [1]);
 });
 
 // =============================================================================

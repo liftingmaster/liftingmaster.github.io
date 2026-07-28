@@ -274,22 +274,50 @@ test('rejectPending: 承認待ちを削除してもEXPは動かない', () => {
   assert.equal(activeCharEntry(after).exp, 0);
 });
 
-test('switchChar: 育成キャラを切り替えても各キャラのEXPは保たれる', () => {
+// 2026-07-28（安部さんの判断・進化の意味論そのものを変える改訂）:
+// switchChar は「育成キャラの切り替えが進化を検知しうる」ようになったため、
+// 戻り値が player 単体から { player, result } に変わった。
+// result.evolvedTo は「切り替えた瞬間に新しく進化したか」（null なら進化なし）。
+test('switchChar: 育成キャラを切り替えても各キャラのEXPは保たれる（戻り値は{player,result}）', () => {
   let p = base();
   p = addRecord(p, { id: 'r1', count: 10, mode: 'no', date: '2026-07-26', now: NOW }).player;
   assert.equal(activeCharEntry(p).exp, 30);
 
   p = claimUnlock(p, 'hinoko', NOW);
-  p = switchChar(p, 'hinoko');
+  const switched1 = switchChar(p, 'hinoko');
+  p = switched1.player;
   assert.equal(activeCharEntry(p).charId, 'hinoko');
   assert.equal(activeCharEntry(p).exp, 0, '新しいキャラはLv1から');
+  assert.equal(switched1.result.charId, 'hinoko');
+  assert.equal(switched1.result.stageBefore, 0);
+  assert.equal(switched1.result.evolvedTo, null, 'Lv1のキャラが切り替えただけで進化するはずがない');
 
-  p = switchChar(p, 'mokumo');
+  const switched2 = switchChar(p, 'mokumo');
+  p = switched2.player;
   assert.equal(activeCharEntry(p).exp, 30, '前のキャラのEXPは保たれる');
+  assert.equal(switched2.result.evolvedTo, null);
 });
 
 test('switchChar: 手持ちにないキャラには切り替えられない', () => {
   assert.throws(() => switchChar(base(), 'kagero'), /kagero/);
+});
+
+test('switchChar: 潜在段階が実現段階以下なら進化を検知しない（すでに見せた進化を二重に演出しない）', () => {
+  const p = base('hinoko');
+  p.chars[0].exp = totalExpForLevel(45);
+  p.chars[0].evolvedStages = [1, 2]; // すでに両方見せている
+  p.records = [];
+  for (let d = 1; d <= 14; d += 1) {
+    p.records.push({
+      id: `r${d}`, date: `2026-07-${String(d).padStart(2, '0')}`, mode: 'no', count: 40, createdAt: NOW,
+    });
+  }
+  p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
+  const switched = switchChar(p, 'mokumo');
+  const back = switchChar(switched.player, 'hinoko');
+  assert.equal(back.result.evolvedTo, null, '同じ進化を二度検知してはいけない');
+  const hinokoEntry = back.player.chars.find((c) => c.charId === 'hinoko');
+  assert.deepEqual(hinokoEntry.evolvedStages, [1, 2], '追記されない');
 });
 
 test('claimUnlock: 新しいキャラはLv1・進化なしで加わる', () => {

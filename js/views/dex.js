@@ -1,6 +1,6 @@
 import { renderNav } from '../app.js';
 import { CHARACTERS } from '../core/characters.js';
-import { displayStageOf } from '../core/player.js';
+import { displayStageOf, canRealizeEvolution } from '../core/player.js';
 import { characterSvg } from '../svg/character.js';
 
 export function register(app) {
@@ -29,7 +29,8 @@ function render(root, app) {
     cell.innerHTML = has
       ? `${characterSvg(c.id, displayStageOf(player, c.id), { size: 90 })}
          <div class="muted">No.${no}</div>
-         <div style="font-weight:bold">${c.name}</div>`
+         <div style="font-weight:bold">${c.name}</div>
+         ${canRealizeEvolution(player, c.id) ? '<div style="color:var(--warn);font-weight:bold;font-size:12px">そだてると しんかしそう！</div>' : ''}`
       : `${characterSvg(c.id, 0, { size: 90, silhouette: true })}
          <div class="muted">No.${no}</div>
          <div style="font-weight:bold">？？？</div>`;

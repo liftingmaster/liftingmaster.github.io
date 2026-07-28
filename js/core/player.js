@@ -61,7 +61,19 @@ export function displayStageOf(player, charId) {
   const shown = Array.isArray(entry.evolvedStages)
     ? entry.evolvedStages.filter((s) => Number.isFinite(s))
     : [];
-  return Math.min(2, Math.max(stageOf(player, charId), 0, ...shown));
+  return Math.min(2, Math.max(0, ...shown));
+}
+
+/**
+ * 「そだてると しんかしそう」なキャラか（控えのままで条件を満たしている）。
+ *
+ * 進化条件3つのうち、自己ベスト回数と連続日数はプレイヤー共通なので、
+ * 以前育てていてレベルだけ足りている控えのキャラは、EXPを1ももらわないまま
+ * 潜在段階だけ上がる。実現（絵が変わる）のは育成中に切り替えた瞬間だけなので、
+ * 止まっている理由が分かるよう、画面はこの値でヒントを出す
+ */
+export function canRealizeEvolution(player, charId) {
+  return stageOf(player, charId) > displayStageOf(player, charId);
 }
 
 /** 次の進化への進捗。最終形態なら null */
@@ -107,6 +119,28 @@ function clone(player) {
   return JSON.parse(JSON.stringify(player));
 }
 
+/**
+ * 進化を実現させる（evolvedStages に積む）共通処理。
+ *
+ * stageBefore+1..stageAfter を**すべて**積むのが要点。evolutionStage は
+ * 「条件を満たしている最大の段階」を返すだけで1段ずつ上がる保証がなく、
+ * 0→2 の一気進化が実際に起こる。トップ値だけ積むと、あとで潜在段階が1へ落ちて
+ * 戻ったときに「絵は第2進化のまま、第1進化の演出が出る」という矛盾が作れる。
+ * commitRecord・applyRecordChange・switchChar の3か所で同じ規則を使う。
+ *
+ * @returns {number|null} 新しく到達した段階（演出に使う）。無ければ null
+ */
+function realizeEvolution(entry, stageBefore, stageAfter) {
+  if (!(stageAfter > stageBefore)) return null;
+  if (!Array.isArray(entry.evolvedStages)) entry.evolvedStages = [];
+  if (entry.evolvedStages.includes(stageAfter)) return null;
+  for (let s = stageBefore + 1; s <= stageAfter; s += 1) {
+    if (!entry.evolvedStages.includes(s)) entry.evolvedStages.push(s);
+  }
+  entry.evolvedStages.sort((a, b) => a - b);
+  return stageAfter;
+}
+
 /** 確定記録を1件足してEXPを反映する。addRecord と approvePending の共通処理 */
 function commitRecord(player, record) {
   const next = clone(player);
@@ -127,11 +161,7 @@ function commitRecord(player, record) {
   const levelAfter = levelFromExp(entry.exp).level;
   const stageAfter = stageOf(next, entry.charId);
 
-  let evolvedTo = null;
-  if (stageAfter > stageBefore && !entry.evolvedStages.includes(stageAfter)) {
-    evolvedTo = stageAfter;
-    entry.evolvedStages.push(stageAfter);
-  }
+  const evolvedTo = realizeEvolution(entry, stageBefore, stageAfter);
 
   const ownedIds = next.chars.map((c) => c.charId);
   const unlocks = pendingUnlocks(maxLevelEver(next), ownedIds);
@@ -348,23 +378,22 @@ function applyRecordChange(player, { recordId, count, now, remove }) {
     if (diff !== 0) c.exp = Math.max(0, c.exp + diff);
   }
 
-  // 進化の検知は、削除も含めて全キャラぶん行う。
+  // 進化を実現させる（evolvedStages に積む）のは**育成中のキャラだけ**
+  // （2026-07-28 安部さんの判断）。進化条件のうち自己ベスト回数と連続日数は
+  // プレイヤー共通なので、ここを全キャラに広げると、EXPを1ももらっていない
+  // 控えのキャラまで同時に進化してしまう（「1体しかEXPは付与できないのに
+  // 2体がなぜ同時に進化する？」）。控えは switchChar で育成中にした瞬間に実現する。
   //
-  // 仕様 §2.2.3 の「回数を減らす訂正でEXPが増えることは計算構造上あり得ない」は
-  // 成立しない（レベル依存特性の切り替わり、兄弟記録の日別ベストが外れることなどで
-  // 増えうる）。ここを絞ると「evolvedTo を返さないのに evolvedStages だけ進み、
-  // 演出を一度も見せないまま絵が変わる」状態になり、その子はその進化を永久に
-  // 見られなくなる。evolvedStages の目的そのものを壊すので、必ず全キャラを見る
+  // EXPの増減・レベルの前後は**全キャラぶん**報告し続ける。兄弟キャラのレベルが
+  // 大きく下がることがあり、実行前の確認に必要なため（charChanges）
   const charChanges = [];
   let evolvedTo = null;
   for (const c of next.chars) {
     const snap = snapshots.get(c.charId);
     const expDelta = c.exp - snap.exp;
-    const stageAfter = stageOf(next, c.charId);
     let charEvolvedTo = null;
-    if (stageAfter > snap.stage && !c.evolvedStages.includes(stageAfter)) {
-      charEvolvedTo = stageAfter;
-      c.evolvedStages.push(stageAfter);
+    if (c.charId === next.activeCharId) {
+      charEvolvedTo = realizeEvolution(c, snap.stage, stageOf(next, c.charId));
     }
     if (c.charId === ownerOfTarget) evolvedTo = charEvolvedTo;
     // 動いていないキャラは載せない。ただし進化したなら、演出を出すために必ず載せる
@@ -424,12 +453,32 @@ export function rejectPending(player, pendingId) {
   return next;
 }
 
-/** 育成キャラを切り替える */
+/**
+ * 育成キャラを切り替える。
+ *
+ * 控えのあいだは、条件を満たしていても進化を実現させない（絵も変えない）ため、
+ * **切り替えたこの瞬間が、控えのキャラが進化する唯一のタイミング**になる
+ * （2026-07-28 安部さんの判断）。潜在段階が実現段階を上回っていれば、
+ * その間の段階をすべて evolvedStages に積んで演出用の値を返す。
+ *
+ * 途中の段階も埋めるのは、evolvedStages が「もう見せた段階」を表すため。
+ * 0→2 のときに 2 だけ積むと、あとで第1進化の演出が誤って出る。
+ *
+ * @returns {{player: object, result: {charId: string, stageBefore: number, evolvedTo: number|null}}}
+ *   evolvedTo は「切り替えた瞬間に新しく進化したか」。進化しないなら null
+ */
 export function switchChar(player, charId) {
   charEntry(player, charId); // 手持ちになければ例外
   const next = clone(player);
   next.activeCharId = charId;
-  return next;
+
+  const entry = next.chars.find((c) => c.charId === charId);
+  const stageBefore = displayStageOf(next, charId);
+  const potential = stageOf(next, charId);
+
+  const evolvedTo = realizeEvolution(entry, stageBefore, potential);
+
+  return { player: next, result: { charId, stageBefore, evolvedTo } };
 }
 
 /** 新しいキャラを受け取る（育成キャラは変わらない） */

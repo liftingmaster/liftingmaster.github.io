@@ -1,12 +1,14 @@
 import { renderNav } from '../app.js';
 import {
   switchChar, claimUnlock, setNickname, displayStageOf, displayName, maxLevelEver,
+  canRealizeEvolution,
 } from '../core/player.js';
 import { pendingUnlocks } from '../core/unlock.js';
 import { levelFromExp } from '../core/exp.js';
 import { getCharacter } from '../core/characters.js';
 import { characterSvg } from '../svg/character.js';
 import { escapeHtml } from './playerSelect.js';
+import { renderEvolutionCard } from './evolutionEffect.js';
 
 export function register(app) {
   app.registerScreen('party', render);
@@ -31,10 +33,16 @@ function render(root, app) {
     const cell = document.createElement('button');
     cell.className = 'dex-cell';
     if (isActive) cell.style.outline = '3px solid var(--accent)';
+    // 控えのままで進化条件を満たしているキャラには、そだてれば進化することを伝える。
+    // 伝えないと「じょうけんは そろっているのに なにも おきない」だけに見える
+    const hint = !isActive && canRealizeEvolution(player, entry.charId)
+      ? '<div style="color:var(--warn);font-weight:bold;font-size:13px">そだてると しんかしそう！</div>'
+      : '';
     cell.innerHTML = `
       ${characterSvg(entry.charId, displayStageOf(player, entry.charId), { size: 100 })}
       <div style="font-weight:bold">${escapeHtml(displayName(player, entry.charId))}</div>
-      <div class="muted">Lv ${lv}${isActive ? ' ・そだてちゅう' : ''}</div>`;
+      <div class="muted">Lv ${lv}${isActive ? ' ・そだてちゅう' : ''}</div>
+      ${hint}`;
     cell.addEventListener('click', () => openActions(root, app, entry.charId, isActive));
     grid.appendChild(cell);
   }
@@ -75,6 +83,34 @@ function renderUnlock(root, app, unlock) {
   root.appendChild(card);
 }
 
+/**
+ * 育成キャラに切り替えた瞬間の進化演出。
+ *
+ * 控えのあいだは条件を満たしても進化しない決まりなので、ここが控えのキャラが
+ * 進化する唯一のタイミングになる。きろく帳の修正演出と同じく、画面遷移
+ * （SCREENS への追加）はせずその場で #app を描き替え、.nav の後片付けを自分でやる
+ */
+function showSwitchEvolution(root, app, charId, result) {
+  const player = app.currentPlayer();
+  const name = displayName(player, charId);
+  const card = document.createElement('div');
+  card.className = 'card center';
+  card.innerHTML = `<h1>${escapeHtml(name)} を そだてるよ！</h1>`;
+  card.appendChild(renderEvolutionCard(charId, result.stageBefore, result.evolvedTo, name));
+
+  const ok = document.createElement('button');
+  ok.className = 'btn btn-lg';
+  ok.textContent = 'つづける';
+  ok.addEventListener('click', () => app.go('home'));
+
+  root.innerHTML = '';
+  root.appendChild(card);
+  root.appendChild(ok);
+  document.querySelectorAll('.nav').forEach((el) => el.remove());
+  renderNav('party', app);
+  window.scrollTo(0, 0);
+}
+
 function openActions(root, app, charId, isActive) {
   const player = app.currentPlayer();
   const name = displayName(player, charId);
@@ -90,9 +126,20 @@ function openActions(root, app, charId, isActive) {
     grow.addEventListener('click', () => {
       const ok = confirm(`${name} を そだてます。いまの キャラの レベルは のこります。いいですか？`);
       if (!ok) return;
-      const saved = app.updatePlayer((p) => switchChar(p, charId));
+      let outcome = null;
+      const saved = app.updatePlayer((p) => {
+        const { player: nextPlayer, result } = switchChar(p, charId);
+        outcome = result;
+        return nextPlayer;
+      });
       // 保存できなかったときは切り替わったと言わない（updatePlayer が元に戻している）
       if (!saved) return;
+      // 控えのあいだに条件を満たしていたキャラは、この瞬間に進化する。
+      // ここで見せないと、evolvedStages だけ進んで絵が黙って変わる
+      if (outcome && outcome.evolvedTo) {
+        showSwitchEvolution(root, app, charId, outcome);
+        return;
+      }
       app.toast(`${name} を そだてるよ！`);
       app.go('home');
     });

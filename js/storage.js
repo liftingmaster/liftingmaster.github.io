@@ -1,7 +1,10 @@
 import { CHARACTERS } from './core/characters.js';
+import { stageOf } from './core/player.js';
 
 export const STORAGE_KEY = 'liftingmaster.v1';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+// v1 = 進化の意味論を変える前（v8まで）。v2 = 控えのキャラは進化しない（v9〜）
+const LEGACY_SCHEMA_VERSION = 1;
 const VALID_CHAR_IDS = new Set(CHARACTERS.map((c) => c.id));
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // アプリが書き出す createdAt/approvedAt は必ず new Date().toISOString() の形
@@ -172,6 +175,60 @@ export function validateState(obj) {
 }
 
 /**
+ * v1（v8まで）→ v2（v9〜）のデータ移行。進化の意味論を変えたことへの
+ * グランドファザリング（2026-07-28 安部さんの判断）。
+ *
+ * displayStageOf の定義が「潜在段階と実現段階の大きい方」から「実現段階だけ」に
+ * 変わったため、そのまま適用すると、すでに控えのキャラの絵が進化後になっている
+ * 端末で**絵が退化**する。「一度見せた進化は取り消さない」という約束を破るので、
+ * 読み込みのときに evolvedStages を潜在段階まで埋めておく。
+ *
+ * 埋め方は「いまの値 ∪ 1..潜在段階」の**和集合**。
+ *   - []  ＋潜在1 → [1]
+ *   - [1] ＋潜在2 → [1,2]（v8 は max(stageOf, ...) だったので第2進化の絵が出ていた）
+ *   - [2] ＋潜在0 → [2] のまま（**縮めない**）
+ * 「空の配列だけ埋める」にすると [1]＋潜在2 が素通りして絵が 2→1 に退化する。
+ * トップ値だけでなく途中の段階も埋めるのは、evolvedStages が「もう見せた段階」を
+ * 表すため。見た目が第2進化なら第1進化は視覚的に通過済みで、
+ * トップ値だけ埋めるとあとで第1進化の演出が誤って出る。
+ *
+ * **いつ走らせるかは state.version だけで決める**（version 1 のときだけ）。
+ * 別キーの印では「v8由来のデータ」と「v9で保存したデータ」を区別できず、
+ * v9で取ったバックアップを復元するたびに控えのキャラが黙って進化してしまう。
+ *
+ * **検証より前に呼ぶ**こと。壊れたデータでも例外を外に出さない
+ * （load は決して throw しない、が既存の契約）。
+ *
+ * @returns {boolean} 移行を実行したか（version を書き換えたか）
+ */
+function migrateToV2(state) {
+  if (!state || typeof state !== 'object') return false;
+  if (state.version !== LEGACY_SCHEMA_VERSION) return false;
+
+  if (Array.isArray(state.players)) {
+    for (const p of state.players) {
+      if (!p || typeof p !== 'object' || !Array.isArray(p.chars)) continue;
+      for (const c of p.chars) {
+        if (!c || typeof c !== 'object' || !Array.isArray(c.evolvedStages)) continue;
+        let potential = 0;
+        try {
+          potential = stageOf(p, c.charId);
+        } catch {
+          continue; // 壊れたキャラ・記録はここでは直さない。validateState に任せる
+        }
+        for (let s = 1; s <= potential; s += 1) {
+          if (!c.evolvedStages.includes(s)) c.evolvedStages.push(s);
+        }
+        c.evolvedStages.sort((a, b) => a - b);
+      }
+    }
+  }
+
+  state.version = SCHEMA_VERSION;
+  return true;
+}
+
+/**
  * 破損データを退避する。1枠目(`${STORAGE_KEY}.broken`)が空ならそこへ、
  * 埋まっていれば2枠目(`${STORAGE_KEY}.broken.2`)へ上書きする（無制限にキーを増やさないため）。
  * 退避の書き込み自体が失敗しても（クォータ超過など）例外は外に漏らさない。
@@ -201,10 +258,21 @@ export function load(storage) {
     return { ok: true, state: createInitialState(), recovered: true };
   }
 
+  // 移行は検証より前に。validateState は version 2 しか通さないので、
+  // v1データはここで2へ上げてからでないと「壊れたデータ」として退避されてしまう
+  const migrated = migrateToV2(parsed);
+
   if (!validateState(parsed).ok) {
     quarantine(storage, raw);
     return { ok: true, state: createInitialState(), recovered: true };
   }
+
+  // **順序が要**: 移行した結果をディスクへ書く。書けなかったらディスク上の
+  // version は 1 のまま残るので、次の起動でやり直せる。
+  // 先に version だけ2にして保存に失敗すると、evolvedStages が空のままなのに
+  // 移行が二度と走らず、絵が退化したまま戻らない（移行自身が
+  // 「一度見せた進化は取り消さない」を破る）
+  if (migrated) save(storage, parsed);
 
   return { ok: true, state: parsed, recovered: false };
 }
@@ -229,6 +297,13 @@ export function importJson(text) {
   } catch (e) {
     return { ok: false, state: null, errors: [`JSONとして読めない: ${e.message}`] };
   }
+  // 取り込むJSON自身の version で判断する。v8由来（version 1）なら移行し、
+  // v9で取った正当なバックアップ（version 2）には触らない。
+  // ここを無条件に移行すると、バックアップを復元するたびに
+  // 「そだてると しんかしそう！」だった控えのキャラが全員その場で黙って進化し、
+  // 演出が永久に失われる。取り込んだ state の保存は呼び出し側
+  // （js/views/settings.js が app.persist() を呼ぶ）が責任を持つ
+  migrateToV2(parsed);
   const v = validateState(parsed);
   if (!v.ok) return { ok: false, state: null, errors: v.errors };
   return { ok: true, state: parsed, errors: [] };
