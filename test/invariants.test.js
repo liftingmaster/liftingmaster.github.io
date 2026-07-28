@@ -15,7 +15,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** 配信対象になるファイルを列挙する（開発用のフォルダは除く） */
 function servableFiles() {
-  const SKIP = new Set(['node_modules', '.git', '.superpowers', 'incoming-art', 'test', 'tools', 'docs', 'icons']);
+  // .claude は開発ツールの設定（launch.json など）。配信もキャッシュもしない。
+  // ここに入れ忘れると sw.js の ASSETS に足せと言われるが、足すと GitHub Pages で
+  // 配信されなかったときに cache.addAll がまるごと失敗し、オフライン対応が死ぬ
+  const SKIP = new Set(['node_modules', '.git', '.claude', '.superpowers', 'incoming-art', 'test', 'tools', 'docs', 'icons']);
   const out = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {

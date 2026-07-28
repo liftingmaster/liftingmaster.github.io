@@ -66,6 +66,10 @@ function render(root, app, params = {}) {
     return;
   }
 
+  // りょうほう記録で2件とも進化した場合は、きろく帳と同じく縮小版にする
+  // （ふつうの寸法で2枚並べると「つづける」が画面の外に出る）
+  const compactEvolution = entries.filter((e) => e.result.evolvedTo).length > 1;
+
   entries.forEach((e, i) => {
     const r = e.result;
     const lines = [];
@@ -91,6 +95,7 @@ function render(root, app, params = {}) {
       // 進化演出は js/views/evolutionEffect.js の共通部品。きろく帳の修正でも同じものを使う
       card.appendChild(renderEvolutionCard(
         e.charId, e.stageBefore, r.evolvedTo, displayName(player, e.charId),
+        { compact: compactEvolution },
       ));
     }
   });

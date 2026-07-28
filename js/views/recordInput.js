@@ -74,7 +74,11 @@ function render(root, app) {
   let digits = '';
   let selectedDate = today;
 
-  const MODE_BTN_STYLE = 'flex:1;padding:0 6px;font-size:15px;line-height:1.2';
+  // モードは3択なので、375px幅だと1つあたりの内側は約82px しかない。
+  // 「ノーバウンド」6文字は 15px だと 90px になって「ノーバウン／ド」で折り返す。
+  // 13px なら 6×13＝78px で収まる（14px は 84px で溢れる）。
+  // nowrap を付けて、あとでラベルを変えたときに黙って割れないようにする
+  const MODE_BTN_STYLE = 'flex:1;padding:0 6px;font-size:13px;line-height:1.2;white-space:nowrap';
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -139,7 +143,9 @@ function render(root, app) {
       promptEl.textContent = step === 1
         ? 'ノーバウンド なんかい できた？'
         : 'ワンバウンド なんかい できた？';
-      saveBtn.textContent = step === 1 ? 'つぎ（ワンバウンドを いれる）' : 'これで きろくする';
+      // 24px のボタンに入るのは 263px÷24 ≒ 10文字まで。
+      // 「つぎ（ワンバウンドを いれる）」は15文字で2行になり、括弧が行をまたいで割れる
+      saveBtn.textContent = step === 1 ? 'つぎ ワンバウンド' : 'これで きろくする';
       stepInfo.textContent = step === 2 ? `ノーバウンド ${noCount}かい にゅうりょくずみ` : '';
       skipOneBtn.style.display = step === 2 ? '' : 'none';
     } else {

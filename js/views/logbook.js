@@ -401,9 +401,14 @@ function showEvolutions(root, app, current, list, heading, outcome) {
   // 「進化まえの姿」は core が実際に見ていた段階（stageBefore）を使う。
   // evolvedTo - 1 で代用すると、0→2 に一気に上がったときに「見たことのない
   // 第1進化の姿から変わった」という嘘の絵になる
+  // 2体以上を1枚に並べるときは縮小版にする。ふつうの寸法のままだと
+  // 「つづける」が画面の外へ出て、スクロールに気づかないと押せなくなる
+  const compact = list.length > 1;
   for (const item of list) {
     const name = displayName(player, item.charId);
-    card.appendChild(renderEvolutionCard(item.charId, item.stageBefore, item.evolvedTo, name));
+    card.appendChild(renderEvolutionCard(
+      item.charId, item.stageBefore, item.evolvedTo, name, { compact },
+    ));
     // 進化カードの直下に、そのキャラ自身のEXP増減を必ず1行添える。
     // EXPが動かずに進化することもある（進化の条件はEXPだけでなく回数・連続日数でも
     // 決まる）ので、その場合も「かわらなかった」と言い切る。ここを空けると、
