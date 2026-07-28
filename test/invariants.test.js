@@ -88,6 +88,37 @@ test('記録の修正機能の新設ファイル追加に合わせて CACHE_NAME
   );
 });
 
+// しずく・はっぱの画像差し替え（御三家の残り2体）で新設予定の6ファイル
+// （js/img/shizuku-0/1/2.png・js/img/happa-0/1/2.png）。
+// 上の「配信するファイルは全て sw.js の ASSETS に載っている」は js/img 配下も
+// 自動で拾うため、実は足し忘れればそちらでも落ちる。ただし ART に載っている
+// ものだけをひのこと同じ形で明示チェックしておくと、症状（ASSETS漏れ）と
+// 原因（このタスクで増やしたはずのファイル）が1本のテスト名で直結する。
+test('しずく・はっぱの画像差し替えで新設する js/img/ の6ファイルが存在し、ASSETSに載っている', () => {
+  const expected = [
+    'js/img/shizuku-0.png', 'js/img/shizuku-1.png', 'js/img/shizuku-2.png',
+    'js/img/happa-0.png', 'js/img/happa-1.png', 'js/img/happa-2.png',
+  ];
+  for (const rel of expected) {
+    let exists = true;
+    try { statSync(join(ROOT, rel)); } catch { exists = false; }
+    assert.ok(exists, `${rel} が存在しない（tools/prepare-art.js で生成予定）`);
+  }
+  const listed = swAssets();
+  for (const rel of expected) {
+    // swAssets() は正規表現 '\.\/([^']*)' の捕獲群を返すため、先頭の './' は付かない
+    assert.ok(listed.has(rel), `sw.js の ASSETS に ./${rel} が無い`);
+  }
+});
+
+test('しずく・はっぱの画像差し替えに合わせて CACHE_NAME が v9 から上がっている', () => {
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  assert.doesNotMatch(
+    sw, /CACHE_NAME\s*=\s*'liftingmaster-v9'/,
+    'js/img/shizuku-*.png・happa-*.png を追加したら CACHE_NAME も上げること（v9のままではオフライン端末に届かない）',
+  );
+});
+
 // js/core を DOM から隔離しているからこそ、ブラウザ無しで全ロジックをテストできる。
 // ここが崩れるとテスト戦略の前提ごと崩れる。実際に imgFallback.js が1度混入した。
 test('js/core は DOM・localStorage・時計に触れない（純粋関数だけを置く約束）', () => {
@@ -106,5 +137,29 @@ test('js/core は DOM・localStorage・時計に触れない（純粋関数だ�
     offenders, [],
     `js/core に環境依存の参照がある: ${offenders.join(', ')}\n`
     + '時刻や DOM が要るものは js/ 直下（app.js と同じ階層）へ置くこと',
+  );
+});
+
+// 追加（実装者・2026-07-28）: CACHE_NAME が単調に増えることを見る。
+//
+// 上の検査は「特定の版でないこと」しか見ていないため、過去に使った名前
+// （例 liftingmaster-v8）へ戻しても緑のまま通ってしまう。しかし Service Worker は
+// キャッシュ名で中身を引くので、一度使った名前へ戻すと、その名前でキャッシュ済みの
+// 端末には**古いファイルが残ったまま**になり、更新が届かない。
+// 版番号を読み取って、これまでに使った最大値以上であることを確かめる。
+//
+// 版を上げたら、この下限もいっしょに上げること（上げ忘れても緑にはならない。
+// 下限より小さい版に戻したときだけ落ちる）。
+const CACHE_VERSION_FLOOR = 10;
+
+test('sw.js の CACHE_NAME は liftingmaster-v<数字> の形で、過去に使った版へ戻っていない', () => {
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  const m = sw.match(/CACHE_NAME\s*=\s*'liftingmaster-v(\d+)'/);
+  assert.ok(m, "CACHE_NAME が 'liftingmaster-v<数字>' の形になっていない");
+  const version = Number(m[1]);
+  assert.ok(
+    Number.isInteger(version) && version >= CACHE_VERSION_FLOOR,
+    `CACHE_NAME が v${version} になっている。過去に使った版（v${CACHE_VERSION_FLOOR} 以下）へ戻すと、`
+    + 'その名前でキャッシュ済みの端末に古いファイルが残り続ける',
   );
 });
