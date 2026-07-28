@@ -11,10 +11,20 @@
  *
  * 背景除去は「縁とつながっている、背景らしい色」だけを消す。
  * キャラの内側にある同系色（目の白、影の灰色など）は縁とつながっていないので残る。
+ *
+ * **もとから透過済みの画像**（四隅の alpha が 0）は、背景除去を通さない。
+ * 判定は RGB だけを見ていて alpha を見ないため、透明画素に残っているゴミの色
+ * （書き出し元によって灰色だったり白だったりする）を「背景の色」として学習し、
+ * キャラの中の同系色まで削ってしまう。もう透明なのだから消す必要もない。
+ * どうしても通したいときは --force-remove-bg を付ける。
+ *
+ * このファイルは CLI としても、テストや他のツールからの import としても使える
+ * （実行時だけ下の「実行」節が走る）。
  */
 import { inflateSync, deflateSync } from 'node:zlib';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ---------- PNG デコード ----------
 
@@ -41,7 +51,7 @@ function paeth(a, b, c) {
 }
 
 /** 8bit の RGB / RGBA / グレースケール（非インターレース）を RGBA の生バイトにする */
-function decodePng(buf) {
+export function decodePng(buf) {
   const chunks = readChunks(buf);
   const ihdr = chunks.find((c) => c.type === 'IHDR').data;
   const width = ihdr.readUInt32BE(0);
@@ -95,7 +105,9 @@ function decodePng(buf) {
       }
     }
   }
-  return { width, height, data: out };
+  return {
+    width, height, data: out, hasAlpha: colorType === 6 || colorType === 4,
+  };
 }
 
 // ---------- PNG エンコード ----------
@@ -125,7 +137,7 @@ function chunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crcBuf]);
 }
 
-function encodePng(width, height, rgba) {
+export function encodePng(width, height, rgba) {
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
@@ -267,15 +279,46 @@ function removeBackground(img, bg, keepEnclosed) {
 
 function opaqueBounds(img, threshold = 24) {
   const { width, height, data } = img;
-  let minX = width; let maxX = -1; let minY = height; let maxY = -1;
+  const cols = new Int32Array(width);
+  const rows = new Int32Array(height);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      if (data[(y * width + x) * 4 + 3] > threshold) {
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
-      }
+      if (data[(y * width + x) * 4 + 3] > threshold) { cols[x] += 1; rows[y] += 1; }
     }
   }
+
+  // 1列/1行あたり何画素あれば「被写体がそこにある」と見なすか。
+  //
+  // 生成画像には、本体から離れたところに数画素だけ薄いゴミが残っていることがある
+  // （実測: shizuku-2_png.png の x=0 に alpha 39 の点が2つ）。素直に最小/最大を
+  // 取ると、その1点のせいで切り出しの中心が 235px もずれ、キャラが片寄る。
+  // 端の列を落とす基準を「その辺の長さの 0.25%（2048px なら約5画素）」にして、
+  // 出力512pxでは1〜2px にしかならない極細のゴミだけを無視する。
+  // 本物のしっぽの先やアンテナは、ふつうこれより太い。
+  const minRun = (len) => Math.max(3, Math.round(len * 0.0025));
+  const colMin = minRun(height);
+  const rowMin = minRun(width);
+
+  const firstIndex = (arr, need) => {
+    for (let i = 0; i < arr.length; i += 1) if (arr[i] >= need) return i;
+    return -1;
+  };
+  const lastIndex = (arr, need) => {
+    for (let i = arr.length - 1; i >= 0; i -= 1) if (arr[i] >= need) return i;
+    return -1;
+  };
+
+  let minX = firstIndex(cols, colMin);
+  let maxX = lastIndex(cols, colMin);
+  let minY = firstIndex(rows, rowMin);
+  let maxY = lastIndex(rows, rowMin);
+
+  // しきい値で全部落ちてしまった（極端に小さい被写体）ときは、素の最小/最大に戻す
+  if (minX < 0 || minY < 0) {
+    minX = firstIndex(cols, 1); maxX = lastIndex(cols, 1);
+    minY = firstIndex(rows, 1); maxY = lastIndex(rows, 1);
+  }
+
   return { minX, maxX, minY, maxY, empty: maxX < 0 };
 }
 
@@ -319,32 +362,128 @@ function fitSquare(img, bounds, size, marginRatio = 0.08) {
   return { width: size, height: size, data: out };
 }
 
-// ---------- 実行 ----------
+// ---------- 変換の本体（CLI からもテストからも使える） ----------
 
-const args = process.argv.slice(2);
-const keepEnclosed = args.includes('--keep-enclosed');
-const [src, dest, sizeArg] = args.filter((a) => !a.startsWith('--'));
-if (!src || !dest) {
-  console.error('usage: node tools/prepare-art.js <input.png> <output.png> [size=512] [--keep-enclosed]');
-  process.exit(2);
+/**
+ * 「もとから透過済み」の画像か。四隅4画素だけでは足りない。
+ *
+ * 四隅だけを見ると、**角丸マスクやビネットで四隅だけ抜けている画像**
+ * （＝背景は不透明のまま残っている）を透過済みと誤判定し、背景除去を飛ばして
+ * 灰色の四角に囲まれたキャラを出力してしまう。逆に1画素でもゴミが乗ると
+ * 判定が反転し、黙って背景除去の経路に入ってキャラを削る
+ * （実測: shizuku-1 の (0,0) を alpha 1 にすると alpha>200 の画素が960個消える）。
+ *
+ * そこで2つを AND で見る:
+ *   - 縁1リングのほぼ全部（99.5%以上）が alpha 0 … 角丸・ビネットを弾く
+ *   - 画像全体の 5% 以上が alpha 0        … 念のための下限
+ * リングに数画素のゴミが乗っても 99.5% は割らないので、判定は1画素で反転しない。
+ */
+export function transparencyProfile(img) {
+  const { width, height, data } = img;
+  const at = (x, y) => data[(y * width + x) * 4 + 3];
+
+  let ringTotal = 0;
+  let ringClear = 0;
+  const countRing = (x, y) => { ringTotal += 1; if (at(x, y) === 0) ringClear += 1; };
+  for (let x = 0; x < width; x += 1) { countRing(x, 0); countRing(x, height - 1); }
+  for (let y = 1; y < height - 1; y += 1) { countRing(0, y); countRing(width - 1, y); }
+
+  let clear = 0;
+  const n = width * height;
+  for (let i = 0; i < n; i += 1) if (data[i * 4 + 3] === 0) clear += 1;
+
+  const ringRatio = ringTotal > 0 ? ringClear / ringTotal : 0;
+  const overallRatio = clear / n;
+  return {
+    ringRatio,
+    overallRatio,
+    preTransparent: ringRatio >= 0.995 && overallRatio >= 0.05,
+  };
 }
-const size = Number(sizeArg) || 512;
 
-const img = decodePng(readFileSync(src));
-const bg = sampleBorder(img);
-const stats = removeBackground(img, bg, keepEnclosed);
-const bounds = opaqueBounds(img);
-if (bounds.empty) throw new Error('全部が背景と判定されました。除去の条件が広すぎます');
-const fitted = fitSquare(img, bounds, size);
-mkdirSync(dirname(dest), { recursive: true });
-const out = encodePng(fitted.width, fitted.height, fitted.data);
-writeFileSync(dest, out);
+/** もとから透過済みか（判定の詳細は transparencyProfile を参照） */
+export function alreadyTransparent(img) {
+  return transparencyProfile(img).preTransparent;
+}
 
-const pct = (v) => `${((v / stats.total) * 100).toFixed(1)}%`;
-console.log(`${src} -> ${dest}`);
-console.log(`  もとの大きさ : ${img.width}x${img.height}`);
-console.log(`  背景の色域   : 明るさ ${bg.lumMin}-${bg.lumMax} / 彩度 <=${bg.satMax}`);
-console.log(`  透過にした   : ${pct(stats.removed)}（境界のぼかし ${pct(stats.soft)}）`);
-console.log(`  うち囲まれた分: ${pct(stats.enclosed)}${keepEnclosed ? '（--keep-enclosed のため未除去）' : ''}`);
-console.log(`  残った被写体 : X ${bounds.minX}-${bounds.maxX} / Y ${bounds.minY}-${bounds.maxY}`);
-console.log(`  書き出し     : ${size}x${size} / ${(out.length / 1024).toFixed(0)}KB`);
+/**
+ * 元画像のバッファを、アプリで使う size x size の PNG バッファへ変換する。
+ * @returns {{ png: Buffer, info: object }}
+ */
+export function prepareArt(srcBuffer, { size = 512, keepEnclosed = false, forceRemoveBg = false } = {}) {
+  const img = decodePng(srcBuffer);
+  const profile = transparencyProfile(img);
+  const preTransparent = profile.preTransparent;
+  const removeBg = forceRemoveBg || !preTransparent;
+
+  let bg = null;
+  let stats = null;
+  if (removeBg) {
+    bg = sampleBorder(img);
+    stats = removeBackground(img, bg, keepEnclosed);
+  }
+
+  const bounds = opaqueBounds(img);
+  if (bounds.empty) throw new Error('全部が背景と判定されました。除去の条件が広すぎます');
+  const fitted = fitSquare(img, bounds, size);
+  return {
+    png: encodePng(fitted.width, fitted.height, fitted.data),
+    info: {
+      width: img.width,
+      height: img.height,
+      preTransparent,
+      profile,
+      removeBg,
+      bg,
+      stats,
+      bounds,
+      size,
+    },
+  };
+}
+
+// ---------- 実行（CLI として起動されたときだけ） ----------
+
+function main() {
+  const args = process.argv.slice(2);
+  const KNOWN_FLAGS = new Set(['--keep-enclosed', '--force-remove-bg']);
+  // 打ち間違えた旗（--force-remove-bgg など）を黙って無視すると、
+  // 意図した処理をしていないのに正常終了して見分けがつかない
+  const unknown = args.filter((a) => a.startsWith('--') && !KNOWN_FLAGS.has(a));
+  if (unknown.length > 0) {
+    console.error(`しらない オプション: ${unknown.join(' ')}`);
+    console.error(`つかえるのは: ${[...KNOWN_FLAGS].join(' ')}`);
+    process.exit(2);
+  }
+  const keepEnclosed = args.includes('--keep-enclosed');
+  const forceRemoveBg = args.includes('--force-remove-bg');
+  const [src, dest, sizeArg] = args.filter((a) => !a.startsWith('--'));
+  if (!src || !dest) {
+    console.error('usage: node tools/prepare-art.js <input.png> <output.png> [size=512] [--keep-enclosed] [--force-remove-bg]');
+    process.exit(2);
+  }
+  const size = Number(sizeArg) || 512;
+
+  const { png, info } = prepareArt(readFileSync(src), { size, keepEnclosed, forceRemoveBg });
+  mkdirSync(dirname(dest), { recursive: true });
+  writeFileSync(dest, png);
+
+  console.log(`${src} -> ${dest}`);
+  console.log(`  もとの大きさ : ${info.width}x${info.height}`);
+  if (info.removeBg) {
+    const pct = (v) => `${((v / info.stats.total) * 100).toFixed(1)}%`;
+    console.log(`  背景の色域   : 明るさ ${info.bg.lumMin}-${info.bg.lumMax} / 彩度 <=${info.bg.satMax}`);
+    console.log(`  透過にした   : ${pct(info.stats.removed)}（境界のぼかし ${pct(info.stats.soft)}）`);
+    console.log(`  うち囲まれた分: ${pct(info.stats.enclosed)}${keepEnclosed ? '（--keep-enclosed のため未除去）' : ''}`);
+  } else {
+    console.log('  背景除去     : していない（もとから透過済み。元の alpha をそのまま使う）');
+  }
+  console.log(`  透過の判定   : 縁リングの透明率 ${(info.profile.ringRatio * 100).toFixed(2)}%（>=99.5%が条件）`
+    + ` / 全体の透明率 ${(info.profile.overallRatio * 100).toFixed(1)}%（>=5%が条件）`
+    + ` → もとから透過済み=${info.preTransparent}${forceRemoveBg ? ' / --force-remove-bg 指定あり' : ''}`);
+  console.log(`  残った被写体 : X ${info.bounds.minX}-${info.bounds.maxX} / Y ${info.bounds.minY}-${info.bounds.maxY}`);
+  console.log(`  書き出し     : ${info.size}x${info.size} / ${(png.length / 1024).toFixed(0)}KB`);
+}
+
+// import されたときは実行しない（テストランナーが落ちるため）
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
