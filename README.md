@@ -8,8 +8,8 @@
 ## つかいかた（開発）
 
 ```bash
-npm test        # テストを実行（297件）
-npm start       # http://localhost:8123/ で開く
+npm test        # テストを実行（321件）
+npm start       # http://localhost:8123/ で開く（ブラウザペイン有効）
 npm run icon    # PWAアイコンを作り直す
 ```
 
@@ -18,6 +18,9 @@ npm install は不要（依存パッケージがゼロのため）。**Node.js v
 テストは `node --test test/*.test.js`（glob 展開）で実行する。`node --test test/`
 （ディレクトリ指定）は Node 24 では `MODULE_NOT_FOUND` になるため使わないこと。
 `test/helpers/` はテスト本体ではなく共有の道具置き場で、この glob には拾われない。
+
+**開発環境**: `.claude/launch.json` により `npm start` でブラウザペインが立ち上がり、
+実寸測定・スクリーンショット・クリックが可能（DOM検査・`getBoundingClientRect` で数値判定できる）。
 
 ## しくみ
 

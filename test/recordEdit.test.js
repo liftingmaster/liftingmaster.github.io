@@ -235,17 +235,66 @@ test('editRecord: EXPが減ってレベルが下がることを許容する（�
 
 // ---------------------------------------------------------------------------
 // 受け入れ条件8: displayStageOf のラチェット
+//
+// 2026-07-28（安部さんの判断・進化の意味論そのものを変える改訂）: displayStageOf の
+// 定義を変更。旧定義は Math.max(stageOf, 0, ...evolvedStages) だったため、
+// 育成中でないキャラ（控え）でも「潜在段階」（生の stageOf。プレイヤー共通の
+// 自己ベスト・連続日数と、そのキャラ固有のレベルのANDで決まる判定用の値。
+// 意味は変えていない）が高ければ、EXPを1も受け取っていなくても絵だけ進化後に
+// なってしまっていた（1体しかEXPは付与できないのに複数体が同時に進化して見える
+// 症状の core 側の原因）。
+//
+// 新定義: displayStageOf = 「実現段階」= Math.max(0, ...evolvedStages)（0〜2に丸め）。
+// stageOf を一切見ない。evolvedStages に追記されるのは、
+//   - commitRecord（普段の記録）: 育成中のキャラだけ
+//   - applyRecordChange（なおす／けす）: 育成中のキャラだけ（兄弟のEXP増減は
+//     charChanges に載るが evolvedStages には追記しない。test/recordEditSymmetric.test.js
+//     の I8・I9 を参照）
+//   - switchChar（新規）: 切り替えた瞬間、切り替え先の潜在段階が実現段階を
+//     上回っていれば追記する（test/evolutionGating.test.js の G2 を参照）
+// のいずれかのタイミングだけ。「絵が変わるのは、育成中に切り替えたその瞬間」という
+// 安部さんの決定を、displayStageOf のこの定義変更が体現している。
 // ---------------------------------------------------------------------------
 
-test('displayStageOf: evolvedStages の最高段階を下回らない（生の stageOf が下がっても絵は戻らない）', () => {
+test('displayStageOf: evolvedStages の最高段階を返す（旧仕様と同じ数値のまま維持）', () => {
   const p = base('hinoko');
   p.chars[0].exp = 0; // 生の stageOf は 0
   p.chars[0].evolvedStages = [1, 2];
   assert.equal(stageOf(p, 'hinoko'), 0);
-  assert.equal(displayStageOf(p, 'hinoko'), 2);
+  assert.equal(displayStageOf(p, 'hinoko'), 2, 'evolvedStagesの最高値。ここは旧仕様から変わらない');
 });
 
-test('displayStageOf: 生の stageOf がラチェットより高ければそのまま返す', () => {
+// 旧テスト「生の stageOf がラチェットより高ければそのまま返す」は反転する。
+// 旧定義は stageOf を見ていたので、evolvedStages が空でも「潜在段階が2まで満たしている」
+// だけで displayStageOf が2を返してしまっていた。これはまさに安部さんが指摘した
+// 症状そのもの（EXPを渡していないキャラの絵が黙って進化後になる）なので、
+// 新定義ではこのケースは 0 になるべき（evolvedStages に追記された実績が無いため）
+test('displayStageOf: stageOf（潜在段階）が高くても evolvedStages（実現段階）が空なら 0（安部さんの指摘そのものの回帰網）', () => {
+  const p = base('hinoko');
+  p.chars[0].exp = totalExpForLevel(45);
+  p.chars[0].evolvedStages = []; // 一度も「育成中に切り替えて条件を満たした」ことがない
+  p.records = [];
+  for (let d = 1; d <= 14; d += 1) {
+    p.records.push({
+      id: `r${d}`, date: `2026-07-${String(d).padStart(2, '0')}`, mode: 'no', count: 40, createdAt: NOW,
+    });
+  }
+  assert.equal(stageOf(p, 'hinoko'), 2, '潜在段階（判定用）は2のまま。意味は変えない');
+  assert.equal(displayStageOf(p, 'hinoko'), 0, '実現段階（絵に使う値）は、evolvedStagesが空なら0（旧仕様なら2を返し、これがバグだった）');
+});
+
+test('displayStageOf: evolvedStages が空で stageOf も0なら0（両方0で一致する自明ケース）', () => {
+  const p = base('hinoko');
+  p.chars[0].exp = 0;
+  p.chars[0].evolvedStages = [];
+  assert.equal(stageOf(p, 'hinoko'), 0);
+  assert.equal(displayStageOf(p, 'hinoko'), 0);
+});
+
+// G9相当（ずかん・パーティのヒント用の判定）: 潜在段階(stageOf) > 実現段階(displayStageOf)
+// のときが「そだてると しんかしそう」の合図になる。同じ core の2関数の比較だけで
+// 判定できることを固定する（新しい専用関数を増やさなくても済む設計であることの確認）
+test('displayStageOf と stageOf: 潜在段階が実現段階を上回っているかどうかで「しんかしそう」を判定できる', () => {
   const p = base('hinoko');
   p.chars[0].exp = totalExpForLevel(45);
   p.chars[0].evolvedStages = [];
@@ -255,15 +304,10 @@ test('displayStageOf: 生の stageOf がラチェットより高ければその�
       id: `r${d}`, date: `2026-07-${String(d).padStart(2, '0')}`, mode: 'no', count: 40, createdAt: NOW,
     });
   }
-  assert.equal(stageOf(p, 'hinoko'), 2);
-  assert.equal(displayStageOf(p, 'hinoko'), 2);
-});
+  assert.ok(stageOf(p, 'hinoko') > displayStageOf(p, 'hinoko'), '控えのまま潜在段階が先行しているので、ヒントを出せるはず');
 
-test('displayStageOf: evolvedStages が空でも stageOf と同じ値を返す（無条件に0にしない）', () => {
-  const p = base('hinoko');
-  p.chars[0].exp = 0;
-  p.chars[0].evolvedStages = [];
-  assert.equal(displayStageOf(p, 'hinoko'), stageOf(p, 'hinoko'));
+  const evolved = { ...p, chars: [{ ...p.chars[0], evolvedStages: [1, 2] }] };
+  assert.ok(!(stageOf(evolved, 'hinoko') > displayStageOf(evolved, 'hinoko')), '実現済みならヒントは出ない');
 });
 
 // ---------------------------------------------------------------------------
@@ -511,7 +555,10 @@ test('グループ再計算7: グループ内の記録が別々のキャラに�
 
   const afterR1 = addRecord(p, { id: 'r1', count: 8, mode: 'no', date: '2026-07-20', now: NOW });
   assert.equal(afterR1.player.records[0].charId, 'hinoko');
-  const switched = switchChar(afterR1.player, 'mokumo');
+  // switchChar は 2026-07-28 の意味論変更で戻り値が { player, result } になった
+  // （育成キャラの切り替えそのものが進化を検知しうるようになったため）。
+  // このテストは切り替えの結果自体には興味がないので player だけ取り出す
+  const switched = switchChar(afterR1.player, 'mokumo').player;
   const afterR2 = addRecord(switched, { id: 'r2', count: 12, mode: 'no', date: '2026-07-20', now: NOW });
 
   const hinokoBefore = afterR2.player.chars.find((c) => c.charId === 'hinoko').exp;
@@ -666,7 +713,7 @@ test('グループ再計算13: editRecord/deleteRecord はグループ再計算�
   const p = base('hinoko');
   p.chars.push({ charId: 'mokumo', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
   const afterR1 = addRecord(p, { id: 'r1', count: 8, mode: 'no', date: '2026-07-20', now: NOW });
-  const switched = switchChar(afterR1.player, 'mokumo');
+  const switched = switchChar(afterR1.player, 'mokumo').player; // 戻り値が {player,result} になった（下の注記参照）
   const afterR2 = addRecord(switched, { id: 'r2', count: 12, mode: 'no', date: '2026-07-20', now: NOW });
 
   const before = JSON.parse(JSON.stringify(afterR2.player));

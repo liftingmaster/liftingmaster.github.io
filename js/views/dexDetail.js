@@ -56,11 +56,19 @@ function render(root, app, params = {}) {
   const rawStage = stageOf(player, char.id);
   const level = levelFromExp(entry.exp).level;
 
+  // 条件はそろっているのに絵が変わらない理由を伝える。控えのキャラは
+  // 育成中に切り替えた瞬間に進化する（js/core/player.js の switchChar）
+  const hint = rawStage > stage
+    ? '<div style="color:var(--warn);font-weight:bold;margin-top:6px">'
+      + 'そだてると しんかしそう！ 「なかま」で この こを えらんでね</div>'
+    : '';
+
   card.innerHTML = `
     ${characterSvg(char.id, stage, { size: 170 })}
     <div class="muted">No.${no} ・ ${char.type}タイプ</div>
     <h1 style="margin:4px 0">${escapeHtml(displayName(player, char.id))}</h1>
     <div class="muted">${escapeHtml(char.name)} ・ Lv ${level}</div>
+    ${hint}
     <p style="text-align:left;margin-top:14px">${escapeHtml(char.dexText)}</p>
     <div class="card" style="background:#f2f6fc;box-shadow:none;text-align:left;margin-top:12px">
       <b>とくせい: ${escapeHtml(char.ability.name)}</b>
