@@ -1,4 +1,4 @@
-import { addRecord, playerView } from '../core/player.js';
+import { addRecord, stageOf } from '../core/player.js';
 import { dailyBest } from '../core/stats.js';
 
 export function register(app) {
@@ -19,6 +19,22 @@ function addYears(dateStr, delta) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y + delta, m - 1, d));
   return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+
+/**
+ * prompt() で受け取った「かいすう」を数値にする。範囲外・数字以外なら null。
+ *
+ * Number() だけに任せると '0x1e' が 30、'1e3' が 1000、' 12 ' が 12 として
+ * Number.isInteger を通ってしまう。子供や おうちのひとが打つ想定の値ではないので、
+ * 半角数字1〜4桁だけを受け付ける。承認画面（approval.js）ときろく帳（logbook.js）の
+ * 両方がこれを使い、2つの画面で判定がずれないようにする
+ */
+export function parseCountInput(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!/^\d{1,4}$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  return n >= 1 && n <= 9999 ? n : null;
 }
 
 /** 'YYYY-MM-DD' を「7がつ20にち」の形にする */
@@ -49,9 +65,16 @@ function render(root, app) {
   const yesterday = addDays(today, -1);
   const { min, max } = dateBounds(today);
 
+  // mode は 'no' | 'one' | 'both'。'both'（りょうほう）のときだけ、同じテンキーを
+  // 2段階で使う（1段目=ノーバウンド、2段目=ワンバウンド。仕様 §4.2）。
+  // キーパッドを2つ並べる案は不採用
   let mode = 'no';
+  let step = 1;
+  let noCount = 0;
   let digits = '';
   let selectedDate = today;
+
+  const MODE_BTN_STYLE = 'flex:1;padding:0 6px;font-size:15px;line-height:1.2';
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -63,23 +86,30 @@ function render(root, app) {
     <input type="date" id="datePick" class="date-input" value="${today}" min="${min}" max="${max}">
     <div id="dateBanner"></div>
     <div id="dateError" class="muted" style="color:var(--danger);min-height:18px;margin-top:6px"></div>
-    <h1 style="margin-top:10px">なんかい できた？</h1>
+    <h1 style="margin-top:10px" id="prompt">なんかい できた？</h1>
     <div id="bestInfo" class="muted" style="margin-bottom:10px"></div>
     <div class="row" style="margin-bottom:14px">
-      <button class="btn" id="modeNo" style="flex:1">ノーバウンド</button>
-      <button class="btn btn-sub" id="modeOne" style="flex:1">ワンバウンド</button>
+      <button class="btn" id="modeNo" style="${MODE_BTN_STYLE}">ノーバウンド</button>
+      <button class="btn btn-sub" id="modeOne" style="${MODE_BTN_STYLE}">ワンバウンド</button>
+      <button class="btn btn-sub" id="modeBoth" style="${MODE_BTN_STYLE}">りょうほう</button>
     </div>
+    <div id="stepInfo" class="muted" style="margin-bottom:8px"></div>
     <div class="center" style="font-size:64px;font-weight:bold;min-height:80px" id="display">0</div>
     <div class="keypad" id="pad"></div>
     <button class="btn btn-lg" id="save" style="margin-top:16px" disabled>これで きろくする</button>
+    <button class="btn btn-sub btn-lg" id="skipOne" style="margin-top:10px;display:none">ワンバウンドは やらなかった</button>
     <button class="btn btn-sub btn-lg" id="cancel" style="margin-top:10px">やめる</button>
   `;
   root.appendChild(card);
 
   const display = card.querySelector('#display');
   const saveBtn = card.querySelector('#save');
+  const skipOneBtn = card.querySelector('#skipOne');
+  const promptEl = card.querySelector('#prompt');
+  const stepInfo = card.querySelector('#stepInfo');
   const modeNo = card.querySelector('#modeNo');
   const modeOne = card.querySelector('#modeOne');
+  const modeBoth = card.querySelector('#modeBoth');
   const dateTodayBtn = card.querySelector('#dateToday');
   const dateYesterdayBtn = card.querySelector('#dateYesterday');
   const datePick = card.querySelector('#datePick');
@@ -91,10 +121,34 @@ function render(root, app) {
     return dateOutOfRangeReason(selectedDate, today);
   }
 
+  /** いまテンキーで入れている回数が、どちらのモードのものか */
+  function inputMode() {
+    if (mode !== 'both') return mode;
+    return step === 1 ? 'no' : 'one';
+  }
+
   function updateBestInfo() {
-    const best = dailyBest(player.records, selectedDate, mode);
+    const best = dailyBest(player.records, selectedDate, inputMode());
     const label = selectedDate === today ? 'きょうの' : `${formatJaDate(selectedDate)}の`;
     bestInfo.textContent = best > 0 ? `${label} ベストは ${best}かい` : 'まだ きろくが ないよ';
+  }
+
+  /** 見出し・保存ボタンの文言・「やらなかった」ボタンを、今の段階に合わせる */
+  function updateStepUI() {
+    if (mode === 'both') {
+      promptEl.textContent = step === 1
+        ? 'ノーバウンド なんかい できた？'
+        : 'ワンバウンド なんかい できた？';
+      saveBtn.textContent = step === 1 ? 'つぎ（ワンバウンドを いれる）' : 'これで きろくする';
+      stepInfo.textContent = step === 2 ? `ノーバウンド ${noCount}かい にゅうりょくずみ` : '';
+      skipOneBtn.style.display = step === 2 ? '' : 'none';
+    } else {
+      promptEl.textContent = 'なんかい できた？';
+      saveBtn.textContent = 'これで きろくする';
+      stepInfo.textContent = '';
+      skipOneBtn.style.display = 'none';
+    }
+    updateBestInfo();
   }
 
   function updateDateUI() {
@@ -116,12 +170,17 @@ function render(root, app) {
 
   function setMode(next) {
     mode = next;
+    // モードを選び直したら「りょうほう」の途中経過は捨てる
+    step = 1;
+    noCount = 0;
     modeNo.className = next === 'no' ? 'btn' : 'btn btn-sub';
     modeOne.className = next === 'one' ? 'btn' : 'btn btn-sub';
-    updateBestInfo();
+    modeBoth.className = next === 'both' ? 'btn' : 'btn btn-sub';
+    updateStepUI();
   }
   modeNo.addEventListener('click', () => setMode('no'));
   modeOne.addEventListener('click', () => setMode('one'));
+  modeBoth.addEventListener('click', () => setMode('both'));
 
   dateTodayBtn.addEventListener('click', () => { selectedDate = today; updateDateUI(); });
   dateYesterdayBtn.addEventListener('click', () => { selectedDate = yesterday; updateDateUI(); });
@@ -160,30 +219,52 @@ function render(root, app) {
   card.querySelector('#cancel').addEventListener('click', () => app.go('home'));
 
   let saving = false;
-  saveBtn.addEventListener('click', () => {
-    // 子どもは同じボタンを続けて叩く。画面が切り替わる前の2回目で
-    // 二重に記録されないよう、最初の1回で締め切る
+
+  /**
+   * items（[{ mode, count }, …]）を1回のトランザクションで確定する。
+   *
+   * 「りょうほう」は必ず ノー→ワン の順に固定して連続適用する（仕様 §4.3）。
+   * すくすく（Lv20以下）・きらめき（Lv50以上）のようなレベル依存の特性は、
+   * 1件目の加算でレベルが跨ぐと2件目の倍率判定が変わるため、適用順で合計EXPが
+   * 変わりうる。順序を固定しておけば、UIでどちらを先に入力しても結果が決まる。
+   *
+   * 保存は app.updatePlayer 1回きり。「ノーだけ保存できてワンが失敗する」半端な
+   * 状態を作らない（保存に失敗したら updatePlayer がメモリ上も元に戻す）
+   */
+  function commit(items) {
     if (saving) return;
-    const count = Number(digits);
-    if (!(count >= 1 && count <= 9999)) return;
+    for (const it of items) {
+      if (!(it.count >= 1 && it.count <= 9999)) return;
+    }
     // ボタンは無効化されているはずだが、属性だけに頼らないという方針を
     // 保存の入口でも徹底する（日付側の最終防波堤）
     if (currentDateReason()) return;
     saving = true;
     saveBtn.disabled = true;
 
-    // 進化アニメーションには「更新前の段階」が要る。addRecord で player が
-    // 上書きされる前に、今の段階を playerView で取っておく
-    const before = playerView(player, app.today());
-    // 結果画面で「何回を超えればよかったか」を出すため、記録前のその日のベストも控えておく
-    const oldDailyBest = dailyBest(player.records, selectedDate, mode);
-    let outcome = null;
+    // 結果画面で「何回を超えればよかったか」を出すため、記録前のその日のベストを控えておく。
+    // 日別ベストはモードごとに独立なので、2件同時でも互いに影響しない
+    const oldBests = items.map((it) => dailyBest(player.records, selectedDate, it.mode));
+
+    let entries = [];
     const saved = app.updatePlayer((p) => {
-      const { player: next, result } = addRecord(p, {
-        id: app.newId('r'), count, mode, date: selectedDate, now: app.now(),
+      let cur = p;
+      const out = [];
+      items.forEach((it, i) => {
+        // 進化アニメーションには「その記録を入れる直前の段階」が要る。
+        // 2件目は1件目の結果を踏まえた段階になる
+        const charId = cur.activeCharId;
+        const stageBefore = stageOf(cur, charId);
+        const { player: next, result } = addRecord(cur, {
+          id: app.newId('r'), count: it.count, mode: it.mode, date: selectedDate, now: app.now(),
+        });
+        cur = next;
+        out.push({
+          result, count: it.count, mode: it.mode, oldDailyBest: oldBests[i], charId, stageBefore,
+        });
       });
-      outcome = result;
-      return next;
+      entries = out;
+      return cur;
     });
 
     // 保存できなかったときに結果画面へ進むと、「+30 EXP」「レベルアップ」「進化」まで
@@ -192,14 +273,47 @@ function render(root, app) {
     // 「ほぞんできませんでした」は app.persist() が出しているので二重に出さない
     if (!saved) {
       saving = false;
-      saveBtn.disabled = false;
+      updateSaveEnabled();
       return;
     }
 
-    app.go('result', {
-      result: outcome, charId: before.charId, stageBefore: before.stage, count, mode,
-      date: selectedDate, oldDailyBest,
-    });
+    app.go('result', { entries, date: selectedDate });
+  }
+
+  saveBtn.addEventListener('click', () => {
+    // 子どもは同じボタンを続けて叩く。画面が切り替わる前の2回目で
+    // 二重に記録されないよう、最初の1回で締め切る
+    if (saving) return;
+    const count = Number(digits);
+    if (!(count >= 1 && count <= 9999)) return;
+
+    // 「りょうほう」の1段目は、まだ保存しない。回数を覚えてテンキーを空にし、
+    // 2段目（ワンバウンド）へ進むだけ
+    if (mode === 'both' && step === 1) {
+      noCount = count;
+      step = 2;
+      digits = '';
+      updateStepUI();
+      update();
+      return;
+    }
+
+    if (mode === 'both') {
+      commit([{ mode: 'no', count: noCount }, { mode: 'one', count }]);
+      return;
+    }
+    commit([{ mode, count }]);
+  });
+
+  // 2段目で「やっぱりワンバウンドはやっていない」となったら、1段目のノーバウンドだけを
+  // 単一モードの記録として保存する（0のままでは記録できない既存ルールはそのまま）
+  skipOneBtn.addEventListener('click', () => {
+    if (saving) return;
+    if (!(noCount >= 1 && noCount <= 9999)) return;
+    // すでにワンバウンドの数字を入れたあとに押されたら、黙って捨てない
+    const typed = Number(digits || '0');
+    if (typed >= 1 && !confirm(`いま いれた ${typed}かいは きえるよ。ノーバウンド ${noCount}かいだけ きろくする？`)) return;
+    commit([{ mode: 'no', count: noCount }]);
   });
 
   setMode('no');

@@ -1,5 +1,5 @@
 import { getCharacter } from '../core/characters.js';
-import { stageOf, displayName, maxLevelEver } from '../core/player.js';
+import { stageOf, displayStageOf, displayName, maxLevelEver } from '../core/player.js';
 import { evolutionProgress } from '../core/evolution.js';
 import { levelFromExp } from '../core/exp.js';
 import { personalBest, recordedDates } from '../core/stats.js';
@@ -48,7 +48,12 @@ function render(root, app, params = {}) {
     return;
   }
 
-  const stage = stageOf(player, char.id);
+  // 絵に使う段階だけラチェット付き（仕様 §2.2.3）。
+  // 記録の修正でEXPが減っても、一度見せた姿より前には戻さない。
+  // しんか条件の✅⇔⬜は生の stageOf で判定する。こちらをラチェット付きにすると
+  // ホームの「しんかの じょうけん」（progressOf = 生の値）と食い違う
+  const stage = displayStageOf(player, char.id);
+  const rawStage = stageOf(player, char.id);
   const level = levelFromExp(entry.exp).level;
 
   card.innerHTML = `
@@ -101,7 +106,7 @@ function render(root, app, params = {}) {
     if (!prog) continue;
     const box = document.createElement('div');
     box.className = 'card';
-    const done = stage >= targetStage;
+    const done = rawStage >= targetStage;
     box.innerHTML = `<h2>だい${targetStage}しんか ${done ? '（かんりょう）' : ''}</h2>
       ${targetStage === 1 ? '<p class="muted">ノーバウンド か ワンバウンド の どちらかで OK</p>' : '<p class="muted">ノーバウンド だけ</p>'}`;
     for (const item of prog.items) {
