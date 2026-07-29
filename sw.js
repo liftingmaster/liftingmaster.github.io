@@ -2,7 +2,7 @@
  * オフラインで動かすためのキャッシュ。
  * ファイルを変えたら CACHE_NAME の版を上げること（古いキャッシュが残るため）。
  */
-const CACHE_NAME = 'liftingmaster-v12';
+const CACHE_NAME = 'liftingmaster-v13';
 
 // ファイルを増やしたら ASSETS にも足すこと。足し忘れるとオフラインでその画面が壊れる。
 // 突合方法は README の「配布」の節を参照
@@ -52,6 +52,7 @@ const ASSETS = [
   './js/views/evolutionEffect.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {

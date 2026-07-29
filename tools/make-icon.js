@@ -64,43 +64,151 @@ function blend(buf, w, x, y, [r, g, b], alpha) {
   buf[i + 3] = 255;
 }
 
-/** 境界を1.5pxぼかした円 */
-function circle(buf, w, h, cx, cy, r, color) {
-  const c = hex(color);
-  const x0 = Math.max(0, Math.floor(cx - r - 2));
-  const x1 = Math.min(w - 1, Math.ceil(cx + r + 2));
-  const y0 = Math.max(0, Math.floor(cy - r - 2));
-  const y1 = Math.min(h - 1, Math.ceil(cy + r + 2));
-  for (let y = y0; y <= y1; y += 1) {
-    for (let x = x0; x <= x1; x += 1) {
-      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-      blend(buf, w, x, y, c, Math.min(1, (r - d) / 1.5 + 0.5));
-    }
+/**
+ * サッカーボールの革のパターン（単位円のなかで定義）。
+ *
+ * 平面にそのまま五角形を描くと「板」に見える。正射影の球では、画面半径 rho の点は
+ * 球面上の角度 asin(rho) に対応するので、画面座標をこの角度へ写してからパターンを
+ * 引くと、革が球面に貼り付いて見える（外周ほど引き伸ばされる）。
+ *
+ * 逆に「画面半径 s に見せたい要素」は、パターン半径 asin(s)/(π/2) に置く必要がある。
+ * この逆算を忘れると中央の五角形だけが肥大するので注意（実際に一度やった）。
+ */
+const toPattern = (s) => Math.asin(Math.min(1, s)) / (Math.PI / 2);
+const R_CENTER = toPattern(0.30);   // 中央の五角形を画面半径 0.30 に見せる
+const D_OUTER = toPattern(0.74);    // まわりの五角形の中心を画面半径 0.74 に
+const R_OUTER = toPattern(0.30);
+
+function pentagon(cx, cy, r, rotDeg) {
+  const pts = [];
+  for (let i = 0; i < 5; i += 1) {
+    const a = ((rotDeg + 72 * i) * Math.PI) / 180;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
   }
+  return pts;
 }
 
-function makeIcon(size) {
-  const buf = Buffer.alloc(size * size * 4);
-  // 背景（角丸の四角）
-  const bg = hex('#4a90d9');
-  const radius = size * 0.22;
+// 中央に1つ、その各辺の外側に1つずつで計6つ
+const PATCHES = (() => {
+  const list = [pentagon(0, 0, R_CENTER, -90)];
+  for (let k = 0; k < 5; k += 1) {
+    const phi = -54 + 72 * k;
+    const rad = (phi * Math.PI) / 180;
+    list.push(pentagon(Math.cos(rad) * D_OUTER, Math.sin(rad) * D_OUTER, R_OUTER, phi));
+  }
+  return list;
+})();
+
+function inPoly(px, py, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
+    const [xi, yi] = pts[i]; const [xj, yj] = pts[j];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** 画面座標（単位円）が黒い革の上か */
+function isBlack(u, v) {
+  const rho = Math.hypot(u, v);
+  if (rho >= 1) return false;
+  const stretched = Math.asin(Math.min(1, rho)) / (Math.PI / 2);
+  const k = rho === 0 ? 0 : stretched / rho;
+  return PATCHES.some((p) => inPoly(u * k, v * k, p));
+}
+
+/** たてグラデ＋角丸（radiusRatio=0 で切り欠きなしの四角＝maskable 用） */
+function background(buf, size, topHex, botHex, radiusRatio, vignette) {
+  const t = hex(topHex); const b = hex(botHex);
+  const radius = size * radiusRatio;
   for (let y = 0; y < size; y += 1) {
+    const k = y / (size - 1);
+    const col = [0, 1, 2].map((i) => t[i] * (1 - k) + b[i] * k);
     for (let x = 0; x < size; x += 1) {
       const dx = Math.max(radius - x, x - (size - radius), 0);
       const dy = Math.max(radius - y, y - (size - radius), 0);
       const d = Math.hypot(dx, dy);
-      blend(buf, size, x, y, bg, Math.min(1, (radius - d) / 1.5 + 0.5));
+      // radius=0（maskable の四隅まで塗る場合）はアンチエイリアスの式が 0.5 を返して
+      // アイコン全体が半透明になる。切り欠きが無いときは素直に不透明で塗る
+      const a = radius <= 0 ? 1 : Math.min(1, (radius - d) / 1.5 + 0.5);
+      if (a <= 0) continue;
+      const rr = Math.hypot(x / size - 0.5, y / size - 0.5) / 0.707;
+      const f = 1 - vignette * rr * rr;
+      blendRgb(buf, size, x, y, col.map((v) => v * f), a);
     }
   }
-  // ボール
-  const c = size / 2;
-  circle(buf, size, size, c, c * 1.02, size * 0.30, '#ffffff');
-  const spot = size * 0.062;
-  circle(buf, size, size, c, c * 1.02, spot * 1.15, '#2b2b33');
-  for (let i = 0; i < 5; i += 1) {
-    const ang = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-    circle(buf, size, size, c + Math.cos(ang) * size * 0.20, c * 1.02 + Math.sin(ang) * size * 0.20, spot, '#2b2b33');
+}
+
+function blendRgb(buf, w, x, y, [r, g, b], a) {
+  const i = (y * w + x) * 4;
+  buf[i] = Math.round(buf[i] * (1 - a) + r * a);
+  buf[i + 1] = Math.round(buf[i + 1] * (1 - a) + g * a);
+  buf[i + 2] = Math.round(buf[i + 2] * (1 - a) + b * a);
+  buf[i + 3] = Math.round(buf[i + 3] * (1 - a) + 255 * a);
+}
+
+/** ボール本体。3x3 のスーパーサンプリングでふちと革の境目を滑らかにする */
+function ball(buf, size, cx, cy, R) {
+  const ln = Math.hypot(-0.45, -0.55, 0.70);
+  const lx = -0.45 / ln; const ly = -0.55 / ln; const lz = 0.70 / ln;
+  const S = 3;
+  for (let y = Math.max(0, Math.floor(cy - R - 3)); y <= Math.min(size - 1, Math.ceil(cy + R + 3)); y += 1) {
+    for (let x = Math.max(0, Math.floor(cx - R - 3)); x <= Math.min(size - 1, Math.ceil(cx + R + 3)); x += 1) {
+      let sum = 0; let hit = 0;
+      for (let sy = 0; sy < S; sy += 1) {
+        for (let sx = 0; sx < S; sx += 1) {
+          const u = (x + (sx + 0.5) / S - cx) / R;
+          const v = (y + (sy + 0.5) / S - cy) / R;
+          const rho = Math.hypot(u, v);
+          if (rho >= 1) continue;
+          const nz = Math.sqrt(Math.max(0, 1 - rho * rho));
+          const diff = Math.max(0, u * lx + v * ly + nz * lz);
+          const black = isBlack(u, v);
+          let c = (black ? 34 : 252) * (0.34 + 0.66 * diff) * (0.55 + 0.45 * nz ** 0.6);
+          c += 210 * diff ** 28 * (black ? 0.55 : 0.85);   // つや
+          sum += Math.max(0, Math.min(255, c));
+          hit += 1;
+        }
+      }
+      if (!hit) continue;
+      blendRgb(buf, size, x, y, [sum / hit, sum / hit, sum / hit], hit / (S * S));
+    }
   }
+}
+
+/** 足元の接地影 */
+function shadow(buf, size, cx, cy, rx, ry, strength) {
+  for (let y = Math.floor(cy - ry - 2); y <= Math.ceil(cy + ry + 2); y += 1) {
+    for (let x = Math.floor(cx - rx - 2); x <= Math.ceil(cx + rx + 2); x += 1) {
+      if (x < 0 || y < 0 || x >= size || y >= size) continue;
+      const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
+      if (d >= 1) continue;
+      const a = strength * (1 - d) ** 1.6;
+      const i = (y * size + x) * 4;
+      if (buf[i + 3] === 0) continue;
+      buf[i] = Math.round(buf[i] * (1 - a));
+      buf[i + 1] = Math.round(buf[i + 1] * (1 - a));
+      buf[i + 2] = Math.round(buf[i + 2] * (1 - a));
+    }
+  }
+}
+
+const TOP = '#2f4f8f';
+const BOTTOM = '#16264d';
+
+/**
+ * @param {number} size
+ * @param {boolean} maskable Android 用。四隅まで背景を敷き、ボールを中央80%の
+ *   安全圏に収める（プラットフォームが円などに切り抜くため）
+ */
+function makeIcon(size, maskable = false) {
+  const buf = Buffer.alloc(size * size * 4);
+  background(buf, size, TOP, BOTTOM, maskable ? 0 : 0.22, 0.18);
+  // maskable は中央80%の円が安全圏。影とふちの分の余裕を見て 0.27 に抑える
+  const R = size * (maskable ? 0.27 : 0.36);
+  const cx = size / 2; const cy = size * 0.50;
+  shadow(buf, size, cx, cy + R * 0.92, R * 1.05, R * 0.26, 0.30);
+  ball(buf, size, cx, cy, R);
   return encodePng(size, size, buf);
 }
 
@@ -109,3 +217,5 @@ for (const size of [192, 512]) {
   writeFileSync(`icons/icon-${size}.png`, makeIcon(size));
   console.log(`icons/icon-${size}.png を作りました`);
 }
+writeFileSync('icons/icon-maskable-512.png', makeIcon(512, true));
+console.log('icons/icon-maskable-512.png を作りました');
