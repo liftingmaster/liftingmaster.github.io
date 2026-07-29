@@ -74,47 +74,35 @@ test('editRecord: 新データの単発ケースで回数を減らすと差額�
   assert.equal(rec.grantedExp, 60);
 });
 
-// 2026-07-28（2回目）: 対称なbefore/afterリプレイ方式への移行にともなう書き換え。
+// 2026-07-29（欠陥Aの是正・当初方針への差し戻し）: 「before は常に、その日の
+// 記録のうちそのキャラに紐づく grantedExp の**保存値**の合計」に統一した
+// （isLegacyDay による日ごとの帳簿切り替えは廃止）。実装(js/core/player.js)は
+// まだ変更されていない（このタスクの制約でテストだけを先に直す）ので、
+// このテストは新しい期待値に対して現状の実装では FAIL する想定（それが目的）。
 //
-// このテストの旧期待値（exp=4584, expDelta=-2800）は、旧アルゴリズムの
-// 「オンス revoke で中間クランプ／post-revoke水準で新規estimateを判定」という
-// 非対称な2段階手順に依存していた。新方式では中間クランプを撤廃し
-// （クランプは最終結果に1回だけ）、before/afterのどちらも「このグループから
-// この記録自身の寄与を引いた基準値(baseline = 現在exp − 記録自身の現在の
-// grantedExp = 7384−3000=4384)」を対称に使ってリプレイする:
-//   before = gain(count=50, charExp=4384) = 50×1×2(すくすく) = 100
+// 新しい導出: このケースは r1 が happa の唯一の記録（グループ＝全記録）。
+// before は**保存値そのもの**（グループ内のリプレイではなく）＝3000。
+// after は変更後の回数でこのグループを baseExp(=4384) から引き直した値。
+//   before = 3000（保存値。すくすく込みの旧い計算結果がそのまま入っている）
 //   after  = gain(count=100, charExp=4384) = 100×1×2(すくすく) = 200
-//   diff = +100 → exp = 7384 + 100 = 7484
-// 旧値(3000)自体が「このexp状態(7384)からは再現できない」という、
-// exp と grantedExp が整合しない初期状態（前回のテストの穴そのもの）だったため、
-// 新方式ではこの不整合を「復元」しようとせず、対称なdiffだけを反映する。
-//
-// 【2026-07-28 第3回レビューで解消】 上の「残る穴」（このグループの記録が
-// そのキャラの記録全部と一致する場合にしか一意に決まらない問題）は、
-// adversarial-reviewer の3回目のレビューで実際の欠陥として検出された
-// （js/core/player.js:294-300、テストが緑のままEXPがずれる）。
-// 正しい基準は「baseExp[c] = max(0, c.exp − そのキャラの“全記録”のgrantedExp合計)」
-// （このグループ内のメンバーだけではなく全部を引く）。
-// このテストは happa の記録が r1 の1件しかない（グループ＝全記録）ケースなので、
-// 旧解釈と正しい解釈のどちらでも baseline は同じ 4384 になり、期待値(exp=7484)は
-// 変わらない。複数レコードに分かれるケースでの回帰網は
-// test/recordEditSymmetric.test.js の L1〜L5（はっぱ・きらら、レベル境界をまたぐ
-// ケースを含む）に集約した。
-test('editRecord: 特性の再判定は「取り消した後」のexp水準で行う（§2.2.2 手順5→対称リプレイ方式で書き換え）', () => {
+//   diff = 200 − 3000 = −2800 → exp = 7384 − 2800 = 4584
+// 「取り消した後のexp水準で特性を再判定する」という旧テスト名の主張自体は
+// 「afterの計算にbaseExp(4384)を使う」という形で維持されるが、beforeを
+// リプレイ値(100)ではなく保存値(3000)にしたことで、diffの符号・大きさが変わる。
+test('editRecord: 特性の再判定は「取り消した後」のexp水準で行う（2026-07-29 beforeは常に保存値の方針に差し戻し）', () => {
   // はっぱ すくすく: Lv20以下で2倍。Lv20到達=4384EXP、Lv21到達=5043EXP
   // （gain.test.js で確認済みの既知の値）
   const p = base('happa');
-  p.chars[0].exp = 4384 + 3000; // 7384。ただし「このグループの寄与(3000)」を除いた
-  // baseline(4384,ちょうどLv20)は、記録自身の現在の値からしか導けない
-  // （exp=7384自体は他の記録の積み重ねを想定していない、テスト専用の作り込み値）
+  p.chars[0].exp = 4384 + 3000; // 7384。baseExp(4384)+この記録の保存値(3000)
   p.records = [
     { id: 'r1', date: '2026-07-26', mode: 'one', count: 50, createdAt: NOW, charId: 'happa', grantedExp: 3000 },
   ];
   const { player, result } = editRecord(p, { recordId: 'r1', count: 100, now: NOW });
-  // baseline = 7384 − 3000 = 4384（ちょうどLv20）
-  // before = 50×1×2(すくすく) = 100 / after = 100×1×2(すくすく) = 200 / diff = +100
-  assert.equal(result.expDelta, 100);
-  assert.equal(activeCharEntry(player).exp, 7384 + 100);
+  // before = 3000（保存値、常に） / after = 100×1×2(すくすく,baseExp=4384) = 200
+  // diff = 200 − 3000 = −2800 → exp = 7384 − 2800 = 4584
+  assert.equal(result.expDelta, -2800);
+  assert.equal(activeCharEntry(player).exp, 4584);
+  assert.equal(player.records.find((r) => r.id === 'r1').grantedExp, 200);
 });
 
 // ---------------------------------------------------------------------------
@@ -640,7 +628,17 @@ test('グループ再計算9（対称リプレイ方式で書き換え）: 旧�
   assert.equal(result.expDelta, 24); // 36 − 12
 });
 
-test('グループ再計算10: 別の日・別のモードの記録の grantedExp は一切変わらない（漏れない）', () => {
+// 2026-07-28（EXP頭打ちルール）: このテストの前提そのものが変わった。
+//
+// 旧アサーション「r4(別のモード、同じ日)のgrantedExpは12のまま」は、
+// 「同じ日ならモードをまたいで比較し、負けたモードのgrantedExpは0にする」という
+// 新ルールと矛盾する。r1・r2(ノー)がその日(07-01)の合計36で、r4(ワン,同じ日)の
+// soloValue(6)=12は36に負けているので、r4は最初からgrantedExp=0でなければならない
+// （日別ベストが更新されても、日全体の勝者でなければEXPは増えない）。
+//
+// 「別の日(r3, 07-02)は変わらない」という主張自体は新ルールでも正しいので維持し、
+// 「別のモードだが同じ日」の主張だけを新ルールの数値（0）に書き換える
+test('グループ再計算10（EXP頭打ちルールで書き換え）: 別の日の記録は変わらないが、同じ日の別モードは日全体の勝敗に従う', () => {
   const p = base('mokumo');
   let cur = p;
   cur = addRecord(cur, { id: 'r1', count: 8, mode: 'no', date: '2026-07-01', now: NOW }).player;
@@ -648,11 +646,13 @@ test('グループ再計算10: 別の日・別のモードの記録の grantedEx
   cur = addRecord(cur, { id: 'r3', count: 10, mode: 'no', date: '2026-07-02', now: NOW }).player; // 別の日
   cur = addRecord(cur, { id: 'r4', count: 6, mode: 'one', date: '2026-07-01', now: NOW }).player; // 別のモード（同じ日）
   assert.equal(cur.records.find((r) => r.id === 'r3').grantedExp, 30); // 10×3（別日なのでベスト0から）
-  assert.equal(cur.records.find((r) => r.id === 'r4').grantedExp, 12); // 6×1×2（もくものふわふわ）
+  // soloValue(no1+no2 合計)=36(3×max(8,12)) vs soloValue(one,6)=6×1×2=12 → その日の勝者はノー。
+  // r4は日全体で負けているので、生の日別ベストが5→6等に更新されてもgrantedExpは0
+  assert.equal(cur.records.find((r) => r.id === 'r4').grantedExp, 0, '同じ日のノー(36)に負けているのでワンは0（旧ルールでは12だった）');
 
   const { player } = deleteRecord(cur, { recordId: 'r1', now: NOW });
   assert.equal(player.records.find((r) => r.id === 'r3').grantedExp, 30, '別の日は変わらない');
-  assert.equal(player.records.find((r) => r.id === 'r4').grantedExp, 12, '別のモードは変わらない');
+  assert.equal(player.records.find((r) => r.id === 'r4').grantedExp, 0, '同じ日の別モードは、r1削除後もノー(残るr2=36)に負けたままなので0のまま');
 });
 
 // 2026-07-28（2回目）: 対称なbefore/afterリプレイ方式への移行にともなう書き換え。
@@ -688,25 +688,34 @@ test('グループ再計算11（対称リプレイ方式で書き換え）: 再�
   assert.equal(result.expDelta, -3);
 });
 
-test('グループ再計算12（両モード同時記録）: ノーのグループを直しても、ワンのグループのgrantedExpは影響を受けない', () => {
+// 2026-07-28（EXP頭打ちルール）: このテストの主張そのものが反転した。
+//
+// 旧版は「同じ日でもノー・ワンは別グループなので、ノー側を直してもワン側の
+// grantedExpは絶対に変わらない」ことを検証していた。しかし新ルールでは
+// 「その日全体（両モード）」が1つのグループになり、日全体の勝者モードだけが
+// EXPを受け取る。ノー側の編集で日全体の勝敗が変わるなら、ワン側のgrantedExpも
+// 当然動く。旧版の数値（o1=10, o2=8 が編集後も不変）はこの新しい結合を
+// 見落としたまま「独立している」と主張していたので、そのまま残すのは危険
+// （実装がこの独立性を実装してしまうと、りょうほうの二重加算バグが再発する）。
+//
+// 新版では、あえて「ノー側の編集でワン側のEXPが動く」ケースを作って検証する
+// （もし実装がまだモード単位でグループを分けていたら、この動きが起きずFAILする）
+test('グループ再計算12（EXP頭打ちルールで反転）: 同じ日のノー側を編集して勝敗が反転すると、ワン側のgrantedExpも動く', () => {
   const p = base('mokumo');
   let cur = p;
-  cur = addRecord(cur, { id: 'n1', count: 8, mode: 'no', date: '2026-07-05', now: NOW }).player;
+  cur = addRecord(cur, { id: 'n1', count: 10, mode: 'no', date: '2026-07-05', now: NOW }).player;
   cur = addRecord(cur, { id: 'o1', count: 5, mode: 'one', date: '2026-07-05', now: NOW }).player;
-  cur = addRecord(cur, { id: 'n2', count: 12, mode: 'no', date: '2026-07-05', now: NOW }).player;
-  cur = addRecord(cur, { id: 'o2', count: 9, mode: 'one', date: '2026-07-05', now: NOW }).player;
-  assert.equal(cur.records.find((r) => r.id === 'o1').grantedExp, 10); // 5×1×2
-  assert.equal(cur.records.find((r) => r.id === 'o2').grantedExp, 8); // (9-5)×1×2
-  assert.equal(activeCharEntry(cur).exp, 54); // no:24+12=36, one:10+8=18
+  // soloValue(no10)=30, soloValue(one5)=5×1×2=10 → 勝者はノー。ワンは0
+  assert.equal(cur.records.find((r) => r.id === 'n1').grantedExp, 30);
+  assert.equal(cur.records.find((r) => r.id === 'o1').grantedExp, 0, '同じ日でノー(30)に負けているのでワンは0');
+  assert.equal(activeCharEntry(cur).exp, 30);
 
-  // n1(ノー)を 8→10 に直す。ノーのグループ[n1,n2]だけを引き直す:
-  //   n1: 10-0=10→30 / n2: ctx含む one 記録は無関係(モード違い) → max(0,12-10)=2→6
-  const { player } = editRecord(cur, { recordId: 'n1', count: 10, now: NOW });
-  assert.equal(player.records.find((r) => r.id === 'n1').grantedExp, 30);
-  assert.equal(player.records.find((r) => r.id === 'n2').grantedExp, 6);
-  assert.equal(player.records.find((r) => r.id === 'o1').grantedExp, 10, 'ワンのグループは影響を受けない');
-  assert.equal(player.records.find((r) => r.id === 'o2').grantedExp, 8, 'ワンのグループは影響を受けない');
-  assert.equal(activeCharEntry(player).exp, 54, 'ノーのグループ合計(3×max(10,12)=36)が変わらないので総EXPも変わらない');
+  // n1(ノー)を 10→2 に減らす。soloValue(no2)=6 < 10(ワン,soloValue(one5)=10) → 勝敗が反転する
+  const { player, result } = editRecord(cur, { recordId: 'n1', count: 2, now: NOW });
+  assert.equal(player.records.find((r) => r.id === 'n1').grantedExp, 0, 'ノーは負け側に転落して0になる');
+  assert.equal(player.records.find((r) => r.id === 'o1').grantedExp, 10, 'ワンは(直接編集していないのに)勝者になって10を受け取る');
+  assert.equal(activeCharEntry(player).exp, 10);
+  assert.equal(result.expDelta, -20); // 10-30
 });
 
 test('グループ再計算13: editRecord/deleteRecord はグループ再計算があっても元のplayerを破壊しない（複数キャラ・複数記録）', () => {
