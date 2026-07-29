@@ -113,7 +113,14 @@ localStorage を直接書き換えられるため、**本格的な保護では�
 
 ## 配布
 
-**公開URL: https://ryoichiabe-svg.github.io/lifting-master/**
+**公開URL: https://liftingmaster.github.io/**
+
+2026-07-29 に `ryoichiabe-svg/lifting-master`（旧URL `https://ryoichiabe-svg.github.io/lifting-master/`）
+から、Organization `liftingmaster` の `liftingmaster.github.io` へ移した。URL に個人名を
+入れないためで、repo 名を `<Org名>.github.io` にしたのでパスなしのルートで配信される。
+**旧URLは動かなくなる。** localStorage はオリジン単位なので、引っ越しの前に
+「せってい → かきだす」でバックアップを取り、新URLで「よみこむ」で戻すこと
+（この手順を踏まないと記録が消える）。ホーム画面のアイコンも追加し直しになる。
 
 GitHub Pages（`main` ブランチのルート）で配信している。静的ファイルだけなので
 ビルド工程はない。URL を渡せば他の子の端末でも使える（記録は各自の端末に保存され、
