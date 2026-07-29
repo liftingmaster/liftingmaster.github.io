@@ -1,4 +1,4 @@
-import { createPlayer } from '../storage.js';
+import { createPlayer, importJson } from '../storage.js';
 import { STARTER_IDS, getCharacter } from '../core/characters.js';
 import { characterSvg } from '../svg/character.js';
 import { playerView } from '../core/player.js';
@@ -107,7 +107,62 @@ function renderCreate(root, app, canCancel) {
     back.textContent = 'もどる';
     back.addEventListener('click', () => app.go('playerSelect'));
     card.appendChild(back);
+  } else {
+    // プレイヤーが1人もいないときだけ（=2人目を足す画面では出さない）。
+    // 「せってい」に入る前提のプレイヤーが存在しないため、ここが唯一の
+    // バックアップ復元の入り口になる（安部さんの実測で発覚した設計の穴）
+    appendRestoreEntry(card, app);
   }
+}
+
+/**
+ * 「バックアップから もどす」。settings.js の「よみこむ」と同じ importJson を
+ * 使い同じ検証を通すが、0人の場面向けに意図して非対称にしてある:
+ *   - 確認ダイアログは出さない（消すものが無い）
+ *   - パスワードゲートを通さない（承認設定を持つプレイヤーが存在しない）
+ * 保存に失敗したときは settings.js の previousState パターンと同じ形で戻す
+ */
+function appendRestoreEntry(card, app) {
+  const label = document.createElement('label');
+  label.className = 'btn btn-sub btn-lg';
+  label.style.marginTop = '10px';
+  label.textContent = 'バックアップから もどす';
+
+  const file = document.createElement('input');
+  file.type = 'file';
+  file.accept = 'application/json,.json';
+  file.style.display = 'none';
+  file.addEventListener('change', async () => {
+    const f = file.files && file.files[0];
+    if (!f) return;
+    let text;
+    try {
+      text = await f.text();
+    } catch (e) {
+      alert(`ファイルを よめませんでした:\n${e.message || e}`);
+      file.value = '';
+      return;
+    }
+    const r = importJson(text);
+    if (!r.ok) {
+      alert(`もどせませんでした:\n${r.errors.slice(0, 3).join('\n')}`);
+      file.value = '';
+      return;
+    }
+    // 検証済みでも保存自体が失敗する（容量超過など）ことがある。その場合は
+    // 元の状態（0人）へ戻し、「もどしました」のような成功は言わない
+    const previousState = app.state;
+    app.state = r.state;
+    if (!app.persist()) {
+      app.state = previousState;
+      return;
+    }
+    app.toast('もどしました');
+    app.go(app.currentPlayer() ? 'home' : 'playerSelect');
+  });
+
+  label.appendChild(file);
+  card.appendChild(label);
 }
 
 /** ユーザーが入れた名前をそのまま innerHTML に入れないためのエスケープ */

@@ -23,6 +23,9 @@ class El {
     this._text = '';
     this.disabled = false;
     this.value = '';
+    // playerSelect.js の renderCreate が cell.dataset.id を読み書きする
+    // （御三家の選択セル）ため、実 DOM と同じく素の {} を生やしておく
+    this.dataset = {};
   }
 
   get id() { return this.attributes.id || ''; }
@@ -71,9 +74,15 @@ class El {
     (this.listeners[type] = this.listeners[type] || []).push(fn);
   }
 
-  /** テスト側から発火させる */
+  /**
+   * テスト側から発火させる。戻り値は Promise.all(...)。
+   * 同期のリスナー（既存テストの大半）は Promise.resolve(undefined) に包まれる
+   * だけで挙動は変わらない（戻り値を使っていないテストは影響を受けない）。
+   * 非同期のリスナー（例: ファイル読み込みで await f.text() するもの）を
+   * テストから `await el.fire('change')` で待てるようにするための追加
+   */
   fire(type, ev = {}) {
-    for (const fn of this.listeners[type] || []) fn(ev);
+    return Promise.all((this.listeners[type] || []).map((fn) => fn(ev)));
   }
 
   focus() {}
