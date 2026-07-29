@@ -181,14 +181,18 @@ function approveAll(app, player) {
   let count = 0;
   const saved = app.updatePlayer((p) => {
     let cur = p;
+    // 【EXP頭打ちルール（2026-07-28）】同じ日にノーとワンが混ざっていると、
+    // あとの承認が先の承認の grantedExp を0に引き直す。result.exp を足し上げると
+    // 実際より多い数字になるので、キャラのEXPが**実際にいくつ動いたか**で数える
+    const expBefore = new Map(cur.chars.map((c) => [c.charId, c.exp]));
     // 必ず古い順。1件ずつ承認する場合と違って、押す順番で合計EXPが変わらない
     const ordered = [...cur.pending].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
     for (const q of ordered) {
-      const { player: next, result } = approvePending(cur, { pendingId: q.id, count: q.count, now: app.now() });
+      const { player: next } = approvePending(cur, { pendingId: q.id, count: q.count, now: app.now() });
       cur = next;
-      totalExp += result.exp;
       count += 1;
     }
+    totalExp = cur.chars.reduce((s, c) => s + (c.exp - (expBefore.get(c.charId) || 0)), 0);
     return { ...cur, pendingEffects: [...cur.pendingEffects, approvedEffect(count, totalExp)] };
   });
   // 保存できなかったときは成功したと言わない（updatePlayer がメモリも元に戻している）
@@ -200,9 +204,13 @@ function approveAll(app, player) {
 function approveOne(app, pendingId, count) {
   let gained = 0;
   const saved = app.updatePlayer((p) => {
-    const { player: next, result } = approvePending(p, { pendingId, count, now: app.now() });
-    gained = result.exp;
-    return { ...next, pendingEffects: [...next.pendingEffects, approvedEffect(1, result.exp)] };
+    const expBefore = new Map(p.chars.map((c) => [c.charId, c.exp]));
+    const { player: next } = approvePending(p, { pendingId, count, now: app.now() });
+    // result.exp は「この記録の grantedExp」。同じ日の別モードがすでにEXPを
+    // 取っていると、キャラが実際に増える量はそれより小さい（EXP頭打ちルール）。
+    // おうちのひとに見せる数字は、実際に動いた量にする
+    gained = next.chars.reduce((s, c) => s + (c.exp - (expBefore.get(c.charId) || 0)), 0);
+    return { ...next, pendingEffects: [...next.pendingEffects, approvedEffect(1, gained)] };
   });
   // 保存できなかったときは「みとめました」と言わない（updatePlayer がメモリも元に戻している）
   if (!saved) return;

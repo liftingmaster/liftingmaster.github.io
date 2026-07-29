@@ -1,5 +1,7 @@
-import { addRecord, stageOf } from '../core/player.js';
+import { addRecord, stageOf, activeCharEntry } from '../core/player.js';
 import { dailyBest } from '../core/stats.js';
+import { levelFromExp } from '../core/exp.js';
+import { pickDayWinnerMode } from '../core/gain.js';
 
 export function register(app) {
   app.registerScreen('recordInput', render);
@@ -35,6 +37,27 @@ export function parseCountInput(text) {
   if (!/^\d{1,4}$/.test(trimmed)) return null;
   const n = Number(trimmed);
   return n >= 1 && n <= 9999 ? n : null;
+}
+
+export function modeLabel(mode) {
+  return mode === 'no' ? 'ノーバウンド' : 'ワンバウンド';
+}
+
+/**
+ * その日のEXPを今どのモードが取っているか（EXP頭打ちルール・2026-07-28）。
+ * 保存済みの grantedExp を読むだけ。まだ誰もEXPを取っていなければ null
+ */
+export function dayExpHolder(records, date) {
+  const totals = { no: 0, one: 0 };
+  for (const r of records) {
+    if (r.date !== date) continue;
+    if (!Number.isFinite(r.grantedExp)) continue;
+    if (totals[r.mode] === undefined) continue;
+    totals[r.mode] += r.grantedExp;
+  }
+  if (totals.no === 0 && totals.one === 0) return null;
+  const mode = pickDayWinnerMode(totals);
+  return { mode, exp: totals[mode] };
 }
 
 /** 'YYYY-MM-DD' を「7がつ20にち」の形にする */
@@ -91,7 +114,8 @@ function render(root, app) {
     <div id="dateBanner"></div>
     <div id="dateError" class="muted" style="color:var(--danger);min-height:18px;margin-top:6px"></div>
     <h1 style="margin-top:10px" id="prompt">なんかい できた？</h1>
-    <div id="bestInfo" class="muted" style="margin-bottom:10px"></div>
+    <div id="bestInfo" class="muted"></div>
+    <div id="dayExpInfo" class="muted" style="margin-bottom:10px"></div>
     <div class="row" style="margin-bottom:14px">
       <button class="btn" id="modeNo" style="${MODE_BTN_STYLE}">ノーバウンド</button>
       <button class="btn btn-sub" id="modeOne" style="${MODE_BTN_STYLE}">ワンバウンド</button>
@@ -120,6 +144,7 @@ function render(root, app) {
   const dateBanner = card.querySelector('#dateBanner');
   const dateError = card.querySelector('#dateError');
   const bestInfo = card.querySelector('#bestInfo');
+  const dayExpInfo = card.querySelector('#dayExpInfo');
 
   function currentDateReason() {
     return dateOutOfRangeReason(selectedDate, today);
@@ -135,6 +160,14 @@ function render(root, app) {
     const best = dailyBest(player.records, selectedDate, inputMode());
     const label = selectedDate === today ? 'きょうの' : `${formatJaDate(selectedDate)}の`;
     bestInfo.textContent = best > 0 ? `${label} ベストは ${best}かい` : 'まだ きろくが ないよ';
+
+    // その日のEXPは「いちばん よかった きろく1つぶん」だけ（EXP頭打ちルール）。
+    // どのモードで決まっているかが分かると、なぜ +0 EXP になるのかが読める。
+    // 承認ONのあいだは grantedExp がまだ無いので、この行は自然に消える
+    const holder = dayExpHolder(player.records, selectedDate);
+    dayExpInfo.textContent = holder
+      ? `${label} EXPは いま ${modeLabel(holder.mode)}の +${holder.exp} EXP`
+      : '';
   }
 
   /** 見出し・保存ボタンの文言・「やらなかった」ボタンを、今の段階に合わせる */
@@ -256,19 +289,75 @@ function render(root, app) {
     const saved = app.updatePlayer((p) => {
       let cur = p;
       const out = [];
+      const activeId = cur.activeCharId;
+      const levelAtStart = levelFromExp(activeCharEntry(cur).exp).level;
       items.forEach((it, i) => {
         // 進化アニメーションには「その記録を入れる直前の段階」が要る。
         // 2件目は1件目の結果を踏まえた段階になる
         const charId = cur.activeCharId;
         const stageBefore = stageOf(cur, charId);
+        const recordId = app.newId('r');
         const { player: next, result } = addRecord(cur, {
-          id: app.newId('r'), count: it.count, mode: it.mode, date: selectedDate, now: app.now(),
+          id: recordId, count: it.count, mode: it.mode, date: selectedDate, now: app.now(),
         });
         cur = next;
         out.push({
-          result, count: it.count, mode: it.mode, oldDailyBest: oldBests[i], charId, stageBefore,
+          result,
+          recordId,
+          count: it.count,
+          mode: it.mode,
+          oldDailyBest: oldBests[i],
+          charId,
+          stageBefore,
         });
       });
+
+      // 【EXP頭打ちルール（2026-07-28）】その日のEXPは「いちばん よかった きろく
+      // 1つぶん」だけ。りょうほうで2件入れると、あとの1件が前の1件の grantedExp を
+      // 0に引き直すことがある。1件目の result.exp はその時点の値で**もう古い**ので、
+      // 確定後の記録から読み直す。これをしないと、けっか画面が 30+60=90 のように
+      // 実際より多いEXPを見せてしまう
+      const finalWinner = out.length > 0 ? out[out.length - 1].result.dayWinnerMode : null;
+      out.forEach((e) => {
+        const rec = cur.records.find((r) => r.id === e.recordId);
+        e.result = {
+          ...e.result,
+          exp: rec && Number.isFinite(rec.grantedExp) ? rec.grantedExp : e.result.exp,
+          dayWinnerMode: e.result.queued ? null : finalWinner,
+        };
+      });
+
+      // レベルの前後も、1件ずつの途中経過ではなく取引全体で言い直す。
+      // EXPをもらえるのは（りょうほうでもモードが違うので）多くて1件なので、
+      // 「レベルアップ！」の帯が2回出ることはない
+      if (!out.some((e) => e.result.queued)) {
+        const levelAtEnd = levelFromExp(
+          cur.chars.find((c) => c.charId === activeId).exp,
+        ).level;
+        const winnerIndex = out.findIndex((e) => e.result.exp > 0);
+        // 誰も +EXP を取らなかった取引（winnerIndex === -1）でも、育成中のキャラ自身の
+        // レベルは動きうる（2026-07-29 欠陥B）。さかのぼって記録を足すと、その日の
+        // 勝敗が引き直されて**前にもらっていた EXP が取り消される**ためで、
+        // 「+0 EXP なのにレベルが下がる」が実際に起きる。ここで levelBefore と
+        // levelAfter を levelAtStart で揃えてしまうと、けっか画面が「Lv23 → Lv23」と
+        // 嘘をつき、子供は何が起きたのか分からないまま1レベル失う。
+        // 変化があるのに帰属先がないときは、**最後のエントリ**に帰属させて必ず言う
+        // ⚠️ 罠23: changeIndex は「取引全体で言い直したレベル変化」の帰属先だが、
+        // core の charChanges は各キャラ単位で1件ずつ返す。りょうほうで記録2件追加のとき、
+        // キャラのレベルが下がってもエントリ0の charChanges に入ることがある。一方で changeIndex は
+        // 最後のエントリ（エントリ1）に帰属させている。現在は result.js の benchedLevelDrops が
+        // 育成中キャラを除外するので二重表示に至っていないが、将来 logbook.js のような画面に
+        // charChanges を引き継いだとき同じキャラが「Lv24→Lv23」と両エントリで言い出す可能性がある
+        const changeIndex = winnerIndex >= 0
+          ? winnerIndex
+          : (levelAtEnd !== levelAtStart ? out.length - 1 : -1);
+        out.forEach((e, i) => {
+          const before = changeIndex >= 0 && i > changeIndex ? levelAtEnd : levelAtStart;
+          const after = changeIndex >= 0 && i >= changeIndex ? levelAtEnd : levelAtStart;
+          e.result = { ...e.result, levelBefore: before, levelAfter: after };
+        });
+      }
+
       entries = out;
       return cur;
     });

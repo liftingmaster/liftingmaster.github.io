@@ -3,7 +3,7 @@ import { personalBest, recordedDates } from './stats.js';
 import { currentStreak, longestStreak } from './streak.js';
 import { evolutionStage, evolutionProgress } from './evolution.js';
 import { pendingUnlocks, nextUnlock } from './unlock.js';
-import { computeGain } from './gain.js';
+import { computeGain, pickDayWinnerMode, EXP_MODES } from './gain.js';
 import { getCharacter } from './characters.js';
 
 /** 育成中キャラの手持ちエントリ */
@@ -141,27 +141,89 @@ function realizeEvolution(entry, stageBefore, stageAfter) {
   return stageAfter;
 }
 
-/** 確定記録を1件足してEXPを反映する。addRecord と approvePending の共通処理 */
+/**
+ * 確定記録を1件足してEXPを反映する。addRecord と approvePending の共通処理。
+ *
+ * 2026-07-28（EXP頭打ちルール）から**その日全体のリプレイ**になった。
+ * 単発の diff のままだと、あとから足した記録が「すでに確定済みの記録の
+ * grantedExp を遡って0にする」（＝敗者モードにする）ことができない。
+ * editRecord / deleteRecord とまったく同じ「対称な before/after リプレイ」に寄せてある。
+ *
+ * result.exp は**この記録自身の grantedExp**（＝日の勝敗まで織り込んだ最終値）。
+ * キャラのEXPの実際の増分とは一致しないことがある（すでにその日の別の記録が
+ * EXPを取っている場合、その分は差し引かれる）。画面はキャラの増減が要るなら
+ * levelBefore/levelAfter・charChanges を見ること。
+ */
 function commitRecord(player, record) {
   const next = clone(player);
   const entry = next.chars.find((c) => c.charId === next.activeCharId);
 
   const levelBefore = levelFromExp(entry.exp).level;
   const stageBefore = stageOf(next, entry.charId);
+  const snapshots = new Map(next.chars.map((c) => [c.charId, {
+    exp: c.exp,
+    level: levelFromExp(c.exp).level,
+    stage: stageOf(next, c.charId),
+  }]));
 
-  const gain = computeGain({
-    records: next.records, record, charId: entry.charId, charExp: entry.exp,
-  });
+  // 自己ベスト判定は既存どおり「この記録以外の全履歴（モード別）」で見る。
+  // モード間の勝敗（頭打ち）には関与させない
+  const isPersonalBest = record.count > personalBest(next.records, record.mode);
 
   // どのキャラに何EXP渡したかを記録自身に残す。あとで「なおす／けす」をしたときに、
   // 推定ではなく正確に引き直せるのはこの2つがあるおかげ（仕様 §2.2.2）
-  next.records.push({ ...record, charId: entry.charId, grantedExp: gain.exp });
-  entry.exp += gain.exp;
+  const added = { ...record, charId: entry.charId, grantedExp: 0 };
+  const beforeRecords = next.records.map((r) => ({ ...r }));
+  next.records.push(added);
+
+  const ownedIdSet = new Set(next.chars.map((c) => c.charId));
+  // 並び順は**常に createdAt 順**。以前は「いま足した記録をこのリプレイでは最後に置く」
+  // 例外があったが、これが保存則を破っていた（2026-07-29 欠陥1）。手順 k の after は
+  // 「足した記録が最後」の並び、手順 k+1 の before は createdAt 順の並びになるため、
+  // **同じ記録集合なのに before_{k+1} ≠ after_k** となり、差分が打ち消し合わない。
+  // 承認を21:00→15:00→09:00の順に押すだけでEXPが無から生まれていた。
+  //
+  // 例外は「承認の順番で合計EXPが変わる」旧挙動を守るために入れられたものだが、
+  // その日全体のリプレイになった今は**承認順でEXPが変わらないほうが正しい**
+  // （親がどのボタンを先に押すかで子供のEXPが変わってはいけない。2026-07-29 安部さんの判断）。
+  const cmp = makeOrderCmp(next.records);
+  const baseExp = baseExpOf(next, ownedIdSet);
+  const groupIds = dayIds(next.records, record.date);
+
+  const beforeSpecs = dayMemberSpecs(beforeRecords, record.date, ownedIdSet);
+  const afterSpecs = dayMemberSpecs(next.records, record.date, ownedIdSet);
+
+  const beforeRun = replayDay(beforeRecords, beforeSpecs, baseExp, cmp, groupIds);
+  const afterRun = replayDay(next.records, afterSpecs, baseExp, cmp, groupIds);
+
+  settleDay(next, {
+    beforeRecords, beforeSpecs, beforeRun, afterSpecs, afterRun,
+  });
 
   const levelAfter = levelFromExp(entry.exp).level;
   const stageAfter = stageOf(next, entry.charId);
 
+  // 進化を実現させるのは育成中のキャラだけ（2026-07-28 安部さんの判断）
   const evolvedTo = realizeEvolution(entry, stageBefore, stageAfter);
+
+  // その日の勝敗が反転すると、直接触っていない兄弟キャラのEXPまで動く。
+  // 確認ダイアログ・演出のために全部報告する（editRecord と同じ契約）
+  const charChanges = [];
+  for (const c of next.chars) {
+    const snap = snapshots.get(c.charId);
+    const expDelta = c.exp - snap.exp;
+    const charEvolvedTo = c.charId === entry.charId ? evolvedTo : null;
+    if (expDelta !== 0 || charEvolvedTo !== null) {
+      charChanges.push({
+        charId: c.charId,
+        expDelta,
+        levelBefore: snap.level,
+        levelAfter: levelFromExp(c.exp).level,
+        stageBefore: snap.stage,
+        evolvedTo: charEvolvedTo,
+      });
+    }
+  }
 
   const ownedIds = next.chars.map((c) => c.charId);
   const unlocks = pendingUnlocks(maxLevelEver(next), ownedIds);
@@ -170,9 +232,15 @@ function commitRecord(player, record) {
     player: next,
     result: {
       queued: false,
-      exp: gain.exp,
-      isPersonalBest: gain.isPersonalBest,
-      levelBefore, levelAfter, evolvedTo, unlocks,
+      exp: added.grantedExp,
+      isPersonalBest,
+      levelBefore,
+      levelAfter,
+      evolvedTo,
+      unlocks,
+      // その日のEXPを取ったモード。'+0 EXP' の理由を画面が出し分けるのに使う
+      dayWinnerMode: afterRun.winnerMode,
+      charChanges,
     },
   };
 }
@@ -197,6 +265,9 @@ export function addRecord(player, { id, count, mode, date, now }) {
         levelAfter: level,
         evolvedTo: null,
         unlocks: pendingUnlocks(maxLevelEver(next), ownedIds),
+        // 承認待ちの時点ではEXPは動かないので、日の勝敗もまだ決まらない
+        dayWinnerMode: null,
+        charChanges: [],
       },
     };
   }
@@ -232,9 +303,19 @@ function makeOrderCmp(records) {
   };
 }
 
+/** その日の記録すべての id（EXP頭打ちルールのグループ単位） */
+function dayIds(records, date) {
+  return new Set(records.filter((r) => r.date === date).map((r) => r.id));
+}
+
 /**
- * グループを「空の状態から」リプレイして、キャラごとの付与合計と
+ * その日1日ぶんを「空の状態から」リプレイして、勝者モード・キャラごとの付与合計・
  * 各メンバーの grantedExp を出す。records は書き換えない。
+ *
+ * グループの単位は **「その日全体」**（2026-07-28 EXP頭打ちルール）。
+ * 以前は「日付＋モード」だったが、モードをまたいで勝敗を決める必要があるので広げた。
+ * そのためモードだけでなく**キャラも跨いだ引き直し**が起きる（育成中でない兄弟キャラの
+ * EXPが、直接触っていない記録の勝敗反転で動く）。呼び出し側は charChanges で全部報告する。
  *
  * 文脈（computeGain に渡す records）は「そのメンバーより前に並ぶ記録すべて」。
  * **後に作られた記録は入れない**。ここを全期間にすると、あとから伸びた自己ベストや
@@ -245,49 +326,188 @@ function makeOrderCmp(records) {
  * **その記録を付けた当時のレベル水準**でなければならない。そこで baseExp
  * （＝そのキャラの全記録ぶんを引いた出発点）から、並び順に沿って
  *   - メンバー: このリプレイで計算し直した値
- *   - メンバー以外: 記録に保存されている grantedExp
+ *   - その日の外の記録: 記録に保存されている grantedExp
  * を足していく（running）。グループ外の記録を足し忘れると baseExp が実質
  * 「今のレベル」になり、Lv1のときに付けた はっぱ の記録を Lv28 で消すと
  * すくすく（×2）が外れて渡した分の半分しか引き戻せない、といったズレが出る。
  *
- * totals はメンバーぶんの付与合計だけ（＝差分に使う額）。running とは別に数える。
+ * running は**モードごとに分岐**させる。両モードとも「その日の付与ぶんを除いた
+ * 同じ水準」から評価しないと、先に処理したモードがすくすく（Lv20以下）を使い切って
+ * 後のモードだけ倍率が落ち、**入力の順番で結果が変わる**（旧実装の 1250 vs 1150）。
+ * その日の記録は、そのモードの分岐にだけ積む。
+ *
+ * totals は**勝者モードだけ**のキャラ別合計（＝差分に使う額）。敗者モードの
+ * メンバーは granted が 0 になる。
  */
-function replayGroup(records, specs, baseExp, cmp) {
+function replayDay(records, specs, baseExp, cmp, groupIds) {
   const ownerOf = new Map(specs.map((s) => [s.id, s.charId]));
-  const running = new Map(baseExp);
-  const totals = new Map();
+  const running = new Map(EXP_MODES.map((m) => [m, new Map(baseExp)]));
+  const modeTotals = new Map(EXP_MODES.map((m) => [m, new Map()]));
   const granted = new Map();
   const acc = [];
   for (const r of [...records].sort(cmp)) {
     const charId = ownerOf.get(r.id);
-    if (charId !== undefined) {
+    const run = running.get(r.mode);
+    if (charId !== undefined && run) {
       const gain = computeGain({
-        records: acc, record: r, charId, charExp: running.get(charId) || 0,
+        records: acc, record: r, charId, charExp: run.get(charId) || 0,
       });
-      running.set(charId, (running.get(charId) || 0) + gain.exp);
+      run.set(charId, (run.get(charId) || 0) + gain.exp);
+      const totals = modeTotals.get(r.mode);
       totals.set(charId, (totals.get(charId) || 0) + gain.exp);
       granted.set(r.id, gain.exp);
-    } else if (Number.isFinite(r.grantedExp) && running.has(r.charId)) {
-      // グループ外・非メンバーの記録は計算し直さない。保存されている値をそのまま
-      // 積んで、次のメンバーが「当時の水準」で判定されるようにするだけ
-      running.set(r.charId, running.get(r.charId) + r.grantedExp);
+    } else if (!groupIds.has(r.id) && Number.isFinite(r.grantedExp)) {
+      // その日の外・非メンバーの記録は計算し直さない。保存されている値をそのまま
+      // 積んで、次のメンバーが「当時の水準」で判定されるようにするだけ。
+      // その日の記録は（メンバーでなくても）積まない。積むと「その日の付与ぶんを
+      // 除いた水準で両モードを評価する」という前提が崩れる
+      for (const m of EXP_MODES) {
+        const branch = running.get(m);
+        if (branch.has(r.charId)) branch.set(r.charId, branch.get(r.charId) + r.grantedExp);
+      }
     }
     acc.push(r);
   }
-  return { totals, granted };
+
+  const sumOf = (m) => [...modeTotals.get(m).values()].reduce((s, v) => s + v, 0);
+  const winnerMode = pickDayWinnerMode({ no: sumOf('no'), one: sumOf('one') });
+
+  // 敗者モードの記録は残るが grantedExp は全部 0（「一番よかった記録1つぶん」だけ）
+  for (const s of specs) {
+    const rec = records.find((r) => r.id === s.id);
+    if (rec && rec.mode !== winnerMode) granted.set(s.id, 0);
+  }
+
+  return { totals: modeTotals.get(winnerMode), granted, winnerMode };
+}
+
+/**
+ * 「その日、そのキャラから取り返す額」をキャラごとに数える。
+ *
+ * **before は常に「保存値」＝その日の記録に実際に書かれている grantedExp の合計**
+ * （2026-07-29 安部さんの指示に差し戻し）。唯一の例外は、額そのものが残っていない
+ * 旧データ（v9以前・手編集バックアップ由来で grantedExp が数値でないもの）で、
+ * これだけは before 側のリプレイ値で見積もる。
+ *
+ * この関数は settleDay と対で「記録に書き戻す額」と「expから引く額」を必ず一致させる
+ * ためにある。settleDay は afterSpecs の grantedExp を**リプレイ値で無条件に上書き**
+ * するので、before をリプレイ値にすると「記録からは消えたのに exp には反映されない差額」
+ * が生まれる。保存値で引けば、記録の増減と exp の増減が定義上つねに一致する
+ * （exp_new = exp_old − Σ保存値 + Σリプレイ値、記録の合計も同じだけ動く）。
+ *
+ * ■ 2026-07-29 に一度これを外して失敗した経緯（同じ穴を掘らないための記録）
+ * 直前の実装は「isLegacyDay（＝敗者モードなのに0でない値が残っている日）は保存値、
+ * それ以外の日は before 側のリプレイ値」と**日ごとに帳簿を切り替えて**いた。理由は
+ * 「保存値にすると recordEditSymmetric の S1〜S4 が落ちるから」だったが、その4本は
+ * テスト名からして「既知の残留・割り切りの固定」で、コメントに「あるべきは45」と
+ * 書いてあった。**あるべき値ではなく割り切りを固定したテスト**を根拠に指示を退けた
+ * のが誤りで、差し戻しでその割り切りは3つとも消えた（S1 102→90、S2 2850→2250、
+ * S3 0→45）。
+ *
+ * 切り替え方式が壊れていた理由は2つ。
+ *  1. isLegacyDay が見ているのは帳簿の**「形」**であって**「額」が古いか**ではない。
+ *     別の日の編集・追加でリプレイ上すくすく(Lv20)／きらめき(Lv50)の線をまたぐと、
+ *     形は v11 のまま額だけ古くなり、判定をすり抜けて差額が漏れる。
+ *  2. 逆に、v10 のデータが1件も無くても true になる（保存時とリプレイで勝者モードが
+ *     入れ替わると、v11 の正しい勝者記録が「敗者なのに0でない」に見える）。
+ * 実測（同じ乱数列・20,000セッション）での保存則の破れは、切り替え方式 184件・
+ * その前の混成方式 369件に対し、**保存値に統一すると 0 件**だった。
+ */
+function grantedBeforeByChar(records, specs, beforeRun) {
+  const before = new Map();
+  for (const s of specs) {
+    const rec = records.find((r) => r.id === s.id);
+    if (!rec) continue;
+    const actual = Number.isFinite(rec.grantedExp)
+      ? rec.grantedExp
+      : (beforeRun.granted.get(s.id) || 0); // 額が残っていない旧データだけ推定
+    before.set(s.charId, (before.get(s.charId) || 0) + actual);
+  }
+  return before;
+}
+
+/**
+ * before/after の2回のリプレイ結果を突き合わせて、
+ * 各記録の grantedExp と各キャラの exp を確定する。
+ *
+ * exp = max(0, exp − before + after)。**クランプはここ1回だけ**。
+ * 途中でクランプすると、引ききれなかった負債が消えて無からEXPが生まれる。
+ *
+ * before は**常に保存値**（grantedBeforeByChar）。after は引き直した値。
+ * 直下のループが afterSpecs の grantedExp をリプレイ値で上書きするので、
+ * この2つを揃えておくことで「記録の合計の増減」と「expの増減」が必ず一致する。
+ *
+ * ■ 既知の制約（2026-07-29・未修正）: baseExpOf のクランプとの噛み合わせ
+ * 「クランプは最終結果に1回だけ」と書いてあるが、実際には baseExpOf 自身が
+ * `Math.max(0, c.exp − grantedByChar)` という**独立した2つ目のクランプ**を持っている。
+ * 別グループの削除で exp が 0 に張り付いた（負債が切り捨てられた）あと、その負債は
+ * どこにも記録されないまま baseExp だけが 0 に持ち上がる。そこへ「保存値どおりに
+ * 取り消す」before を当てると、切り捨てられた負債のぶんが**逆に湧く**
+ * （recordEditSymmetric.test.js の I5 で +87。差し戻し前の混成方式では +4 だった）。
+ * これは before を保存値にするかリプレイ値にするかとは無関係の別種の穴で、
+ * 塞ぐには「クランプが効いた時点でその日の保存 grantedExp も辻褄が合うよう落とす」など
+ * 帳簿そのものを書き換える必要がある（＝クランプに当たった瞬間に、触っていない日の
+ * 記録の grantedExp を勝手に減らす）。影響範囲が「触っていない記録の書き換え」まで
+ * 広がるため、安部さんの判断を待つ扱いにして塞いでいない。
+ * 「EXPを引ききれないときは溶けるときは溶かす」（＝クランプ自体は許容）は既に
+ * 判断済みだが、**逆に湧くのは別の話**なので、判断の経緯ごとここに残す。
+ */
+function settleDay(next, { beforeRecords, beforeSpecs, beforeRun, afterSpecs, afterRun }) {
+  const before = grantedBeforeByChar(beforeRecords, beforeSpecs, beforeRun);
+
+  for (const s of afterSpecs) {
+    const rec = next.records.find((r) => r.id === s.id);
+    if (rec) rec.grantedExp = afterRun.granted.get(s.id) || 0;
+  }
+
+  for (const c of next.chars) {
+    const diff = (afterRun.totals.get(c.charId) || 0) - (before.get(c.charId) || 0);
+    if (diff !== 0) c.exp = Math.max(0, c.exp + diff);
+  }
+}
+
+/**
+ * リプレイの出発点。**全記録**の grantedExp を引いた「何も記録していなかったころの水準」。
+ * その日の中だけを引くと、あとから積んだEXPが残って実質「今のレベル」になり、
+ * 「いつ直したか」で結果が変わってしまう（はっぱ・きらら）。
+ * before/after で同じ値を使うことで、引く基準と足す基準のずれも防ぐ。
+ *
+ * ここの `Math.max(0, …)` は settleDay の最終クランプとは**別の2つ目のクランプ**で、
+ * 「クランプは最終結果に1回だけ」という設計方針の外側にある。既知の穴の説明は
+ * settleDay のコメントを参照（I5 の +87）。
+ */
+function baseExpOf(next, ownedIds) {
+  const grantedByChar = new Map();
+  for (const r of next.records) {
+    if (Number.isFinite(r.grantedExp) && ownedIds.has(r.charId)) {
+      grantedByChar.set(r.charId, (grantedByChar.get(r.charId) || 0) + r.grantedExp);
+    }
+  }
+  return new Map(next.chars.map(
+    (c) => [c.charId, Math.max(0, c.exp - (grantedByChar.get(c.charId) || 0))],
+  ));
+}
+
+/** その日のメンバー（EXPの帰属先が確定している記録）。extraId は対象記録の強制参加用 */
+function dayMemberSpecs(records, date, ownedIds, { extraId = null, extraCharId = null } = {}) {
+  return records
+    .filter((r) => r.date === date)
+    .filter((r) => r.id === extraId || (Number.isFinite(r.grantedExp) && ownedIds.has(r.charId)))
+    .map((r) => ({ id: r.id, charId: r.id === extraId ? extraCharId : r.charId }));
 }
 
 /**
  * 確定済み記録1件の回数訂正・削除の共通処理。
  *
  * 方式は「対称な before/after リプレイ」（2026-07-28 第2回改訂）。
- * 同じ日・同じモードのグループを、**変更前と変更後でまったく同じやり方で
+ * グループの単位は 2026-07-28 の EXP頭打ちルールで「日付＋モード」から
+ * **「その日全体」**に広がった。**変更前と変更後でまったく同じやり方で
  * 2回リプレイし、その差分だけ**をキャラのEXPに反映する。
  *
- *   1. リプレイ対象 = グループの新データ全部 ＋ 対象記録 R 自身
+ *   1. リプレイ対象 = その日の新データ全部（モード問わず）＋ 対象記録 R 自身
  *      （R が旧データなら持ち主は activeCharId。R 以外の旧データの兄弟は
  *      対象にしない＝EXPを動かさないが、dailyBest などの文脈には参加する）
- *   2. baseExp[c] = max(0, c.exp − そのキャラのグループ内 grantedExp 合計)。
+ *   2. baseExp[c] = max(0, c.exp − そのキャラの**全記録**の grantedExp 合計)。
  *      before と after で同じ baseExp を使う
  *   3. exp = max(0, exp + (after − before))。**クランプは最後に1回だけ**
  *
@@ -305,7 +525,7 @@ function applyRecordChange(player, { recordId, count, now, remove }) {
   const next = clone(player);
   const index = next.records.findIndex((r) => r.id === recordId);
   const target = next.records[index];
-  const { date, mode } = target;
+  const { date } = target;
 
   const ownedIds = new Set(next.chars.map((c) => c.charId));
   // 「新データ」と言えるのは、charId が今も手持ちにあり grantedExp が数値のときだけ。
@@ -325,32 +545,17 @@ function applyRecordChange(player, { recordId, count, now, remove }) {
   }]));
 
   const cmp = makeOrderCmp(next.records);
+  const groupIds = dayIds(next.records, date);
 
-  const memberSpecs = next.records
-    .filter((r) => r.date === date && r.mode === mode)
-    .filter((r) => r.id === recordId
-      || (Number.isFinite(r.grantedExp) && ownedIds.has(r.charId)))
-    .map((r) => ({ id: r.id, charId: r.id === recordId ? ownerOfTarget : r.charId }));
+  const memberSpecs = dayMemberSpecs(next.records, date, ownedIds, {
+    extraId: recordId, extraCharId: ownerOfTarget,
+  });
 
-  // レベル依存特性の判定に使うリプレイの出発点。
-  // **全記録**の grantedExp を引いた「何も記録していなかったころの水準」にする。
-  // グループ内だけを引くと、あとから積んだEXPが残って実質「今のレベル」になり、
-  // 「いつ直したか」で結果が変わってしまう（はっぱ・きらら）。
-  // before/after で同じ値を使うことで、引く基準と足す基準のずれも防ぐ
-  const grantedByChar = new Map();
-  for (const r of next.records) {
-    if (Number.isFinite(r.grantedExp) && ownedIds.has(r.charId)) {
-      grantedByChar.set(r.charId, (grantedByChar.get(r.charId) || 0) + r.grantedExp);
-    }
-  }
-  const baseExp = new Map(next.chars.map(
-    (c) => [c.charId, Math.max(0, c.exp - (grantedByChar.get(c.charId) || 0))],
-  ));
+  const baseExp = baseExpOf(next, ownedIds);
 
   // before: いまの回数のままリプレイ（records は触らずコピーの上で回す）
-  const beforeRun = replayGroup(
-    next.records.map((r) => ({ ...r })), memberSpecs, baseExp, cmp,
-  );
+  const beforeRecords = next.records.map((r) => ({ ...r }));
+  const beforeRun = replayDay(beforeRecords, memberSpecs, baseExp, cmp, groupIds);
 
   if (remove) {
     next.records.splice(index, 1);
@@ -365,18 +570,11 @@ function applyRecordChange(player, { recordId, count, now, remove }) {
 
   // after: 変更後の回数（削除なら R 抜き）で、まったく同じやり方でリプレイ
   const afterSpecs = remove ? memberSpecs.filter((s) => s.id !== recordId) : memberSpecs;
-  const afterRun = replayGroup(next.records, afterSpecs, baseExp, cmp);
+  const afterRun = replayDay(next.records, afterSpecs, baseExp, cmp, groupIds);
 
-  for (const spec of afterSpecs) {
-    const rec = next.records.find((r) => r.id === spec.id);
-    rec.grantedExp = afterRun.granted.get(spec.id);
-  }
-
-  // 差分だけを反映する。クランプはここ1回だけ（途中でクランプすると負債が消える）
-  for (const c of next.chars) {
-    const diff = (afterRun.totals.get(c.charId) || 0) - (beforeRun.totals.get(c.charId) || 0);
-    if (diff !== 0) c.exp = Math.max(0, c.exp + diff);
-  }
+  settleDay(next, {
+    beforeRecords, beforeSpecs: memberSpecs, beforeRun, afterSpecs, afterRun,
+  });
 
   // 進化を実現させる（evolvedStages に積む）のは**育成中のキャラだけ**
   // （2026-07-28 安部さんの判断）。進化条件のうち自己ベスト回数と連続日数は
@@ -425,6 +623,8 @@ function applyRecordChange(player, { recordId, count, now, remove }) {
       // 満たしている最大の段階を返すだけで1段ずつ上がる保証がなく 0→2 も起こる
       stageBefore: targetSnap.stage,
       estimated,
+      // その日のEXPを取ったモード（EXP頭打ちルール）
+      dayWinnerMode: afterRun.winnerMode,
       // グループ再計算で動いた全キャラ。兄弟キャラのレベル低下・進化を
       // 画面が拾えるようにするための一覧
       charChanges,
