@@ -545,8 +545,8 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 
 ## GitHub と配信のしくみ（作業前に必ず読む）
 
-**いちばん大事なこと: `main` への push は、そのまま本番反映です。**ステージング環境も
-承認フローもありません。お子さんが実際に使っているアプリが 1〜2分で入れ替わります。
+**いちばん大事なこと: `main` の更新は、そのまま本番反映です。**ステージング環境はありません。
+Pull Request と必須CIはありますが、マージすると、お子さんが実際に使っているアプリが 1〜2分で入れ替わります。
 
 ### 事実（すべて `gh api` で確認した値）
 
@@ -554,7 +554,8 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 リポジトリ      liftingmaster/liftingmaster.github.io
 公開範囲        public          ← 無料の GitHub Pages を使う条件。private にすると配信が止まる
 既定ブランチ    main
-ブランチ保護    なし            ← main に直接 push できてしまう。人間が気をつけるしかない
+ブランチ保護    PR必須・管理者にも適用・node-test必須（strict）
+                force push禁止・branch deletion禁止・承認人数0
 CI / Actions    test workflow（必須check名: node-test）
                 → Pull Request と main で全432テストを実行。PRでは CACHE_NAME の版上げも検査
 Pages の設定    source: main の / （ルート）、build_type: legacy、HTTPS 強制、status: built
