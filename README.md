@@ -3,12 +3,15 @@
 子供が毎日のリフティング最高回数を記録し、続けるほどキャラクターのレベルが上がって
 進化する Web アプリ。記録はすべて端末の中だけに保存され、外部に送信されない。
 
+**初めての方へ**: [`HANDOFF.md`](./HANDOFF.md) をお読みください。何のアプリか、動かし方、必須の設計、踏んだ罠（25件）、やり残しがまとめてあります。
+
 設計書: `../docs/superpowers/specs/2026-07-26-lifting-app-design.md`
+（**このリポジトリの外**にあるので、クローンした環境には無い。無くても `HANDOFF.md` だけで再開できる）
 
 ## つかいかた（開発）
 
 ```bash
-npm test        # テストを実行（321件）
+npm test        # テストを実行（420件）
 npm start       # http://localhost:8123/ で開く（ブラウザペイン有効）
 npm run icon    # PWAアイコンを作り直す
 ```
@@ -147,11 +150,14 @@ Service Worker はキャッシュ優先で動くため、これを忘れると�
 繰り返し起きた（`sw.js` への登録漏れ、`js/core` への DOM 混入など）。
 人が思い出して守る仕組みは、担当が変わると効かない。
 
-**約束を決めたら `test/invariants.test.js` に1本足すこと。** 現在そこにあるもの:
+**約束を決めたら `test/invariants.test.js` に1本足すこと。** 現在9件あり、主なものは:
 
 - 配信するファイルが全て `sw.js` の `ASSETS` に載っている（オフラインで壊れないこと）
 - `sw.js` が実在しないファイルを指していない
 - `js/core` が DOM・localStorage・時計に触れない
+- `pendingUnlocks` の呼び出しが**すべて第3引数を渡している**（渡し忘れを3回やったので機械化した。
+  違反は「ファイル:行番号」を名指しで落ちる）
+- `CACHE_NAME` が過去の版へ戻っていない（**上げ忘れは検出できない**。下記のとおり手で確認する）
 
 `npm test` で自動的に走るので、突合コマンドを手で叩く必要はもう無い。
 ただし **`CACHE_NAME` の版上げは機械では判定できない**ので、これだけは手で確認すること。
@@ -162,7 +168,7 @@ Service Worker はキャッシュ優先で動くため、これを忘れると�
 ファイルを増やしたときは、次のコマンドで漏れがないか突合すること。
 
 ```bash
-node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const listed=new Set([...sw.matchAll(/'\.\/([^']*)'/g)].map(m=>m[1]).filter(Boolean));const walk=(d,a=[])=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=d+'/'+e.name;if(e.isDirectory()){if(['node_modules','.git','.superpowers','incoming-art','test','tools','docs'].includes(e.name))continue;walk(p,a);}else a.push(p.replace('./',''));}return a;};const onDisk=walk('.').filter(f=>/\.(js|css|html|json|png)$/.test(f)&&f!=='package.json'&&f!=='sw.js');const missing=onDisk.filter(f=>!listed.has(f));console.log(missing.length?'漏れ: '+missing.join(', '):'漏れなし');"
+node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const listed=new Set([...sw.matchAll(/'\.\/([^']*)'/g)].map(m=>m[1]).filter(Boolean));const walk=(d,a=[])=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=d+'/'+e.name;if(e.isDirectory()){if(['node_modules','.git','.superpowers','.claude','incoming-art','test','tools','docs'].includes(e.name))continue;walk(p,a);}else a.push(p.replace('./',''));}return a;};const onDisk=walk('.').filter(f=>/\.(js|css|html|json|png)$/.test(f)&&f!=='package.json'&&f!=='sw.js');const missing=onDisk.filter(f=>!listed.has(f));console.log(missing.length?'漏れ: '+missing.join(', '):'漏れなし');"
 ```
 
 あわせて `CACHE_NAME` の版を必ず上げること。上げないと古いキャッシュが配られ、
@@ -185,53 +191,65 @@ node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const l
 返すため、呼び出し側は区別しない。どのキャラのどの形態に画像があるかは
 `js/svg/artManifest.js` の `ART` オブジェクトに1か所で集約。
 
-### 画像化の手順（確立済み・Task 28 進行中）
+### 画像化の手順（御三家3体で確立済み）
 
-残り6体を進める場合は以下の手順：
+残り6体を進める場合の手順。**以下はすべて実際に動かして確認した内容。**
 
-1. **プロンプト作成** — 同じスタイルの生成画像3枚（各キャラの初期・第1進化・第2進化）
-   - 御三家（ひのこ・しずく・はっぱ）のプロンプトは作成済み・2026-07-28完了
-   - ぴかり以降6体分は未作成
+1. **プロンプトを作る** — 1体につき3枚（初期・第1進化・第2進化）を別々に生成させる。
+   ぴかりのプロンプトは `docs/art-prompts/pikari.md` にある。**これを雛形にして
+   他のキャラぶんを書く。**背景を完全な透明にすること・輪郭線はキャラの色を暗くした色・
+   おなかにクリーム色の面、が既存3体と揃えるための必須条件
 
-2. **背景除去・縮小** — `node tools/prepare-art.js`
-   - `incoming-art/CHARACTER-NAME/` に 3 つの PNG を置いておく
-   - スクリプト実行後、白背景で正方形に縮小・整列された画像が確認フォルダに出力
-   - `prepare-art.js` は実行後に `incoming-art/` を自動削除する（次のキャラへの混同を避けるため）
+2. **`incoming-art/` に置く** — フォルダを掘らずフラットに置く。ファイル名は
+   `pikari-1.png`（初期）/ `pikari-2.png`（第1進化）/ `pikari-3.png`（第2進化）。
+   **`-1/-2/-3` が stage `0/1/2` に対応する**（1つずれるので注意）。
+   `incoming-art/` は gitignore
 
-3. **ユーザーが目視確認** — `tools/make-art-preview.html` を開く
-   - 前後のキャラと並べて見て、スタイルが合っているか確認
-   - OK なら次に進む
+3. **変換する** — 出力先を1枚ずつ指定して実行する。
+   ```bash
+   node tools/prepare-art.js incoming-art/pikari-1.png js/img/pikari-0.png
+   ```
+   背景を透過にし、余白を整えて 512x512 の PNG を書き出す。
+   **`incoming-art/` は自動では消えない**（元画像は残るので、必要なら手で消す）。
+   元画像が最初から透過済みなら背景除去は自動で飛ばす（`transparencyProfile` が判定）
 
-4. **マニフェストに登録** — `js/svg/artManifest.js` の `ART` に1行足す
+4. **目で見て確認する** — `node tools/make-art-preview.js` で
+   `tools/art-preview-<キャラ>.html` を作り、ブラウザで開く（このHTMLは gitignore）。
+   3段階が同じ大きさ・同じ重心に見えるか、縁に灰色のにじみが無いかを見る
+
+5. **マニフェストに登録** — `js/svg/artManifest.js` の `ART` に1行足す
    ```js
-   { name: 'CHARACTER_NAME', stages: { 0: '初期', 1: '第1進化', 2: '第2進化' } }
+   pikari: [0, 1, 2],
    ```
 
-5. **キャッシュに追加** — `sw.js` の `ASSETS` リストに PNG ファイルを追加
+6. **キャッシュに追加** — `sw.js` の `ASSETS` に3ファイルを追加し、
+   **`CACHE_NAME` の版を上げる**（忘れると端末に届かない）
 
-6. **キャッシュ版を上げる** — `sw.js` の `CACHE_NAME` を上げる（`v2` → `v3` など）
-   - **これを忘れると修正が端末に届かない（Service Worker はキャッシュ優先）**
-
-7. **テスト・デプロイ** — `npm test` で落ちなければ push
+7. **テストして push** — `node --test test/*.test.js` が全件通ればよい。
+   `test/png-art.test.js` が 512x512・四隅の透明・透明率20〜90%・輪郭の灰色にじみを
+   機械検査する。`test/invariants.test.js` は ASSETS の漏れと「**過去の版へ戻していないこと**」を見る。
+   **版を上げ忘れたことは機械では検出できない**（v14 のまま push してもテストは緑になる）ので手で確認する
 
 ### キャラ一覧と進捗
 
-| キャラ名 | 形態 | 状態 |
-|---------|------|------|
-| ひのこ | 初期 / 第1進化 / 第2進化 | ✅ 画像完了（2026-07-28 焼き直し） |
-| しずく | 初期 / 第1進化 / 第2進化 | ✅ 画像完了（2026-07-28） |
-| はっぱ | 初期 / 第1進化 / 第2進化 | ✅ 画像完了（2026-07-28） |
-| ぴかり | 初期 / 第1進化 / 第2進化 | ❌ プロンプト未作成 |
-| きらら | 初期 / 第1進化 / 第2進化 | ❌ プロンプト未作成 |
-| がんろ | 初期 / 第1進化 / 第2進化 | ❌ プロンプト未作成 |
-| かげろ | 初期 / 第1進化 / 第2進化 | ❌ プロンプト未作成 |
-| こおる | 初期 / 第1進化 / 第2進化 | ❌ プロンプト未作成 |
-| もくも | 初期 / 第1進化 / 第2進化 | ❌ プロンプト未作成 |
+| No. | キャラ名 | 画像 | プロンプト |
+|---|---|---|---|
+| 1 | ひのこ | ✅ 完了（2026-07-28・焼き直し済み） | — |
+| 2 | しずく | ✅ 完了（2026-07-28） | — |
+| 3 | はっぱ | ✅ 完了（2026-07-28） | — |
+| 4 | ぴかり | ❌ SVG のまま | ✅ `docs/art-prompts/pikari.md` |
+| 5 | もくも | ❌ SVG のまま | ❌ 未作成 |
+| 6 | きらら | ❌ SVG のまま | ❌ 未作成 |
+| 7 | がんろ | ❌ SVG のまま | ❌ 未作成 |
+| 8 | こおる | ❌ SVG のまま | ❌ 未作成 |
+| 9 | かげろ | ❌ SVG のまま | ❌ 未作成 |
+
+9枚（御三家3体）でオフラインキャッシュは約1.8MB。残り6体を入れると約5MBになる。
 
 ### 動作確認
 
 `tools/preview-characters.html` を開くと27パターン（9体 × 3進化段階）が一覧できる
-（ひのこは画像、他は SVG）。
+（御三家3体は画像、残り6体は SVG）。
 
 ### 注意点
 
