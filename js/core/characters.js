@@ -43,7 +43,11 @@ export const CHARACTERS = [
   {
     id: 'pikari', no: 4, name: 'ぴかり', type: 'でんき', color: '#ffd23d',
     dexText: 'いっしゅんの すばやさは だれにも まけない。ボールを おとさない しゅんぱつりょくを もつ。',
-    unlockLevel: 30,
+    // 2026-07-30: 「レベルの節目」ではなく「なかまの誰かがだい1しんか(stage 1)を
+    // 実現したら解放」に変わった（安部さんの依頼）。unlockLevel は null にし、
+    // 判定は unlock.js の pendingUnlocks が maxEvolvedStageEver 経由で行う。
+    unlockLevel: null,
+    unlockOnEvolvedStage: 1,
     ability: { id: 'inazuma', name: 'いなずま', text: 'ノーバウンドの EXPが 1.5ばい' },
     evolutions: [
       { stage: 1, level: 12, noCount: 20, oneCount: 70, streak: 3 },

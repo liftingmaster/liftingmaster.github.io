@@ -24,6 +24,36 @@ export function maxLevelEver(player) {
   return player.chars.reduce((max, c) => Math.max(max, levelFromExp(c.exp).level), 1);
 }
 
+/**
+ * evolvedStages の配列から「実際に演出済みの段階」を 0〜2 に丸めて取り出す。
+ *
+ * displayStageOf と maxEvolvedStageEver の共通処理。evolvedStages は手編集
+ * バックアップから来ることがあるので、真偽値・文字列・undefined などの
+ * 非数値混入を Number.isFinite で除外してから Math.max/Math.min で丸める
+ * （2026-07-30 欠陥3。displayStageOf 側の丸めと食い違うと、片方は絵を
+ * 出せるのにもう片方（ぴかりの解放判定）だけ NaN で壊れる、という矛盾が起きる）。
+ */
+function clampedStages(evolvedStages) {
+  return Array.isArray(evolvedStages)
+    ? evolvedStages.filter((s) => Number.isFinite(s))
+    : [];
+}
+
+/**
+ * これまでに「実現した」（evolvedStages に積まれた）進化段階の最大値。
+ *
+ * 2026-07-30: ぴかりの解放条件（unlockOnEvolvedStage）の判定に使う。
+ * stageOf（潜在段階）ではなく evolvedStages を見るのは、控えのキャラが
+ * 条件を満たしただけでは解放してはいけないため（進化ゲートと同じ理由）。
+ * evolvedStages が無い/空のキャラは無視するので、誰も進化していなければ 0。
+ */
+export function maxEvolvedStageEver(player) {
+  return player.chars.reduce((max, c) => {
+    const shown = clampedStages(c.evolvedStages);
+    return Math.max(max, Math.min(2, Math.max(0, ...shown)));
+  }, 0);
+}
+
 /** 進化判定に使う実績（プレイヤー本人のもの） */
 function achievements(player) {
   return {
@@ -58,9 +88,7 @@ export function stageOf(player, charId) {
  */
 export function displayStageOf(player, charId) {
   const entry = charEntry(player, charId);
-  const shown = Array.isArray(entry.evolvedStages)
-    ? entry.evolvedStages.filter((s) => Number.isFinite(s))
-    : [];
+  const shown = clampedStages(entry.evolvedStages);
   return Math.min(2, Math.max(0, ...shown));
 }
 
@@ -226,7 +254,7 @@ function commitRecord(player, record) {
   }
 
   const ownedIds = next.chars.map((c) => c.charId);
-  const unlocks = pendingUnlocks(maxLevelEver(next), ownedIds);
+  const unlocks = pendingUnlocks(maxLevelEver(next), ownedIds, maxEvolvedStageEver(next));
 
   return {
     player: next,
@@ -264,7 +292,7 @@ export function addRecord(player, { id, count, mode, date, now }) {
         levelBefore: level,
         levelAfter: level,
         evolvedTo: null,
-        unlocks: pendingUnlocks(maxLevelEver(next), ownedIds),
+        unlocks: pendingUnlocks(maxLevelEver(next), ownedIds, maxEvolvedStageEver(next)),
         // 承認待ちの時点ではEXPは動かないので、日の勝敗もまだ決まらない
         dayWinnerMode: null,
         charChanges: [],

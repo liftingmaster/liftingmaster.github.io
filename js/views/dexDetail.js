@@ -12,8 +12,17 @@ import { escapeHtml } from './playerSelect.js';
  * 未所持キャラの「なかまに なる」条件テキスト。
  * unlockLevel が 0 なのは御三家の残り2体で、実際には Lv10（2択）か Lv20（自動付与）で
  * 手に入る。「Lv 0 で…」は意味をなさないので、御三家専用の文言に差し替える。
+ *
+ * unlockOnEvolvedStage を持つキャラ（ぴかり等）はレベルではなく「なかまの誰かが
+ * 特定の進化段階を実現したこと」で解放されるので、unlockLevel は null のまま
+ * （2026-07-30 欠陥2）。ここで先に分岐しないと unlockLevel が null と
+ * 厳密不一致で下の数値レベル分岐に落ち、「Lv null で なかまに なる」が
+ * そのまま子供の画面に出る。
  */
 function unlockText(char) {
+  if (typeof char.unlockOnEvolvedStage === 'number') {
+    return `なかまの だれかが だい${char.unlockOnEvolvedStage}しんか すると なかまに なる`;
+  }
   if (char.unlockLevel === 0) {
     return `Lv${UNLOCK_LEVELS[0]} か Lv${UNLOCK_LEVELS[1]} で なかまに なる`;
   }
@@ -37,12 +46,16 @@ function render(root, app, params = {}) {
   const no = String(char.no).padStart(3, '0');
 
   if (!has) {
+    // レベルでは解放されないキャラ（unlockOnEvolvedStage を持つ）には
+    // 「いまの さいこう レベル」を出さない。無関係な情報だから
+    // （2026-07-30 テスターの判断）。レベルで解放されるキャラは従来どおり出す
+    const levelUnlocked = typeof char.unlockOnEvolvedStage !== 'number';
     card.innerHTML = `
       ${characterSvg(char.id, 0, { size: 160, silhouette: true })}
       <div class="muted">No.${no}</div>
       <h1>？？？</h1>
       <p>${unlockText(char)}</p>
-      <p class="muted">いまの さいこう レベル: ${maxLevelEver(player)}</p>`;
+      ${levelUnlocked ? `<p class="muted">いまの さいこう レベル: ${maxLevelEver(player)}</p>` : ''}`;
     root.appendChild(card);
     appendBack(root, app);
     return;

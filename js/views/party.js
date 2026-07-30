@@ -1,7 +1,7 @@
 import { renderNav } from '../app.js';
 import {
   switchChar, claimUnlock, setNickname, displayStageOf, displayName, maxLevelEver,
-  canRealizeEvolution,
+  maxEvolvedStageEver, canRealizeEvolution,
 } from '../core/player.js';
 import { pendingUnlocks } from '../core/unlock.js';
 import { levelFromExp } from '../core/exp.js';
@@ -18,7 +18,11 @@ function render(root, app) {
   const player = app.currentPlayer();
   if (!player) return app.go('playerSelect');
 
-  const unlocks = pendingUnlocks(maxLevelEver(player), player.chars.map((c) => c.charId));
+  const unlocks = pendingUnlocks(
+    maxLevelEver(player),
+    player.chars.map((c) => c.charId),
+    maxEvolvedStageEver(player),
+  );
   if (unlocks.length > 0) renderUnlock(root, app, unlocks[0]);
 
   const card = document.createElement('div');
@@ -56,7 +60,11 @@ function renderUnlock(root, app, unlock) {
   const card = document.createElement('div');
   card.className = 'card center';
   card.style.background = '#fff6e5';
-  card.innerHTML = `<h2>Lv${unlock.level} とうたつ！ あたらしい なかま！</h2>
+  // 進化由来の解放（level: null）はレベル到達の見出しを出せないので出し分ける
+  const heading = unlock.kind === 'evolution'
+    ? 'だい1しんかの ごほうび！ あたらしい なかま！'
+    : `Lv${unlock.level} とうたつ！ あたらしい なかま！`;
+  card.innerHTML = `<h2>${heading}</h2>
     <p class="muted">${unlock.choices.length > 1 ? 'どちらかを えらんでね' : 'なかまに なりたそうに こっちを みている'}</p>`;
 
   const grid = document.createElement('div');

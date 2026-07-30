@@ -1,6 +1,6 @@
 import { renderNav } from '../app.js';
 import {
-  playerView, progressOf, maxLevelEver, displayStageOf,
+  playerView, progressOf, maxLevelEver, displayStageOf, maxEvolvedStageEver,
 } from '../core/player.js';
 import { pendingUnlocks } from '../core/unlock.js';
 import { characterSvg } from '../svg/character.js';
@@ -61,7 +61,11 @@ function render(root, app) {
   }
 
   // 2. 受け取り待ちの仲間
-  const unlocks = pendingUnlocks(maxLevelEver(player), player.chars.map((c) => c.charId));
+  const unlocks = pendingUnlocks(
+    maxLevelEver(player),
+    player.chars.map((c) => c.charId),
+    maxEvolvedStageEver(player),
+  );
   if (unlocks.length > 0) {
     const note = document.createElement('div');
     note.className = 'card';

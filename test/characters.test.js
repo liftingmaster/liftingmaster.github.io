@@ -20,12 +20,25 @@ test('御三家3体は unlockLevel 0', () => {
 });
 
 test('解放レベルは設計どおり', () => {
-  assert.equal(getCharacter('pikari').unlockLevel, 30);
   assert.equal(getCharacter('mokumo').unlockLevel, 40);
   assert.equal(getCharacter('kirara').unlockLevel, 50);
   assert.equal(getCharacter('ganro').unlockLevel, 65);
   assert.equal(getCharacter('kooru').unlockLevel, 80);
   assert.equal(getCharacter('kagero').unlockLevel, 100);
+});
+
+// =============================================================================
+// 2026-07-30 安部さんの依頼: ぴかり(No.4)の解放条件を「Lv30到達」から
+// 「なかまの誰かが だい1しんか(stage:1)を達成した」に変える。
+// ぴかりはもうレベルの節目を持たない（unlockLevel は null）。かわりに
+// 「進化のどの段階に到達したら解放されるか」を unlockOnEvolvedStage で持つ、
+// という設計（安部さんの提案どおり）をここで固定する。
+// =============================================================================
+
+test('ぴかりはレベルの節目ではなく、だい1しんか(stage:1)の実現で解放される', () => {
+  const pikari = getCharacter('pikari');
+  assert.equal(pikari.unlockLevel, null, 'もうレベルでは解放されない');
+  assert.equal(pikari.unlockOnEvolvedStage, 1, 'なかまの誰かがだい1しんか(stage 1)を実現すると解放される');
 });
 
 test('全キャラが進化を2段階持ち、第2進化は oneCount が null', () => {

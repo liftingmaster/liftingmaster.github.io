@@ -152,6 +152,95 @@ test('js/core は DOM・localStorage・時計に触れない（純粋関数だ�
 // 下限より小さい版に戻したときだけ落ちる）。
 const CACHE_VERSION_FLOOR = 10;
 
+// =============================================================================
+// 2026-07-30 追加: pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver) の
+// 第3引数（maxEvolvedStageEver）を渡し忘れる同じ抜けが js/ 内で3回起きている
+// （js/views/home.js:64 が最新の例。adversarial-reviewer 指摘・欠陥1）。
+// 人間の目でのレビューに頼ると次も見逃されるので、呼び出し箇所の引数の数を
+// ソースから機械的に数えて検査する（実装は書き換えない・検査だけ置く）。
+// =============================================================================
+
+/** 文字列中の 'pendingUnlocks(' の位置から、対応する閉じ括弧までの中身を切り出す */
+function extractCallArgs(src, openIdxAfterParen) {
+  let depth = 1;
+  let i = openIdxAfterParen;
+  while (depth > 0 && i < src.length) {
+    if (src[i] === '(') depth += 1;
+    else if (src[i] === ')') depth -= 1;
+    i += 1;
+  }
+  return src.slice(openIdxAfterParen, i - 1);
+}
+
+/** かっこの深さを見ながらトップレベルのカンマだけで分割し、空要素（末尾カンマ由来）は捨てる */
+function splitTopLevelArgs(argsStr) {
+  const parts = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of argsStr) {
+    if ('([{'.includes(ch)) depth += 1;
+    else if (')]}'.includes(ch)) depth -= 1;
+    if (ch === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts.map((s) => s.trim()).filter((s) => s !== '');
+}
+
+function listJsFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listJsFiles(full));
+    else if (entry.name.endsWith('.js')) out.push(full);
+  }
+  return out;
+}
+
+test('H3 js/ 内の pendingUnlocks 呼び出しは、すべて第3引数(maxEvolvedStageEver)を渡している', () => {
+  const jsDir = join(ROOT, 'js');
+  const violations = [];
+
+  for (const file of listJsFiles(jsDir)) {
+    const raw = readFileSync(file, 'utf8');
+    // コメント中の言及（例: js/core/unlock.js の解説コメントにある
+    // 「pendingUnlocks(40, ['hinoko'])」）を実際の呼び出しと誤認しないよう、
+    // 行番号を保ったままコメントだけ空白化する
+    const src = raw
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:])\/\/.*$/gm, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+
+    const NEEDLE = 'pendingUnlocks(';
+    let idx = src.indexOf(NEEDLE);
+    while (idx !== -1) {
+      // 関数定義自身（export function pendingUnlocks(...)）は呼び出しではないので除外
+      const isDefinition = src.slice(Math.max(0, idx - 9), idx) === 'function ';
+      if (!isDefinition) {
+        const argsStr = extractCallArgs(src, idx + NEEDLE.length);
+        const args = splitTopLevelArgs(argsStr);
+        if (args.length !== 3) {
+          const line = src.slice(0, idx).split('\n').length;
+          violations.push(
+            `${relative(ROOT, file).split(sep).join('/')}:${line} — 引数${args.length}個 (${argsStr.trim().replace(/\s+/g, ' ')})`,
+          );
+        }
+      }
+      idx = src.indexOf(NEEDLE, idx + 1);
+    }
+  }
+
+  assert.deepEqual(
+    violations, [],
+    `pendingUnlocks の呼び出しで第3引数(maxEvolvedStageEver)が抜けている:\n${violations.join('\n')}\n`
+    + 'ぴかりの解放条件は maxEvolvedStageEver 経由でしか判定できないため、渡し忘れると'
+    + 'その画面だけ「あたらしい なかまが まってるよ！」が永久に出ない',
+  );
+});
+
 test('sw.js の CACHE_NAME は liftingmaster-v<数字> の形で、過去に使った版へ戻っていない', () => {
   const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
   const m = sw.match(/CACHE_NAME\s*=\s*'liftingmaster-v(\d+)'/);

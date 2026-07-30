@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   activeCharEntry, maxLevelEver, playerView, stageOf, progressOf, displayName,
   addRecord, approvePending, rejectPending, switchChar, claimUnlock, setNickname,
+  maxEvolvedStageEver,
 } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
 import { totalExpForLevel } from '../js/core/exp.js';
@@ -95,7 +96,13 @@ test('addRecord: 承認ONでも既にある解放待ちを見逃さない', () =
   p.chars[0].exp = totalExpForLevel(10); // すでにLv10到達済み・未受取の解放がある
   p.settings.approvalEnabled = true;
 
-  const expected = pendingUnlocks(maxLevelEver(p), p.chars.map((c) => c.charId));
+  // 2026-07-30（P10-b）: pendingUnlocks は maxEvolvedStageEver を渡す第3引数が
+  // ある。ここを省略すると、期待値(expected)と実装呼び出し(addRecord内)が
+  // 「両辺そろって同じ間違いをする」ため、addRecord 側が将来この第3引数を
+  // 落としても本テストは気づけない（テストの穴）。明示的に渡して両辺を揃える
+  const expected = pendingUnlocks(
+    maxLevelEver(p), p.chars.map((c) => c.charId), maxEvolvedStageEver(p),
+  );
   assert.ok(expected.length > 0, 'テストの前提: 解放待ちがあること');
 
   const { result } = addRecord(p, { id: 'q1', count: 10, mode: 'no', date: '2026-07-26', now: NOW });
@@ -347,6 +354,97 @@ test('claimUnlock: すでに持っているキャラは重複しない', () => {
   assert.throws(() => claimUnlock(base(), 'mokumo', NOW), /mokumo/);
 });
 
+// =============================================================================
+// 2026-07-30 安部さんの依頼: ぴかりの解放条件が「Lv30到達」から
+// 「なかまの誰かが だい1しんか(stage:1)を実現した」に変わった。
+// player.js の pendingUnlocks 呼び出し箇所（commitRecord・addRecordの承認待ち経路）
+// が、実際に evolvedStages に積まれた最高段階を pendingUnlocks の第3引数として
+// 渡していることを end-to-end で固定する。
+// 判定に使うのは「実現した」evolvedStages であって stageOf（潜在段階）ではない
+// （G1と同じく、控えのキャラが条件を満たしただけでは解放されない）。
+// =============================================================================
+
+test('P10 記録を追加して だい1しんか が実現した瞬間の result.unlocks に ぴかり が入る（commitRecord経由・end-to-end）', () => {
+  // 御三家を先に3体とも持たせ、Lv10・Lv20のレベル由来の解放待ちが
+  // 同時に混ざらないようにする（進化由来だけを見るため）
+  const p = base('hinoko');
+  p.chars.push({ charId: 'shizuku', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
+  p.chars.push({ charId: 'happa', nickname: null, exp: 0, unlockedAt: NOW, evolvedStages: [] });
+
+  // ひのこ 第1進化: レベル15 / ノー15 or ワン50 / 連続5にち
+  p.chars[0].exp = totalExpForLevel(15);
+  for (let d = 1; d <= 4; d += 1) {
+    const date = `2026-07-0${d}`;
+    p.records.push({
+      id: `f${d}`, date, mode: 'no', count: 1, createdAt: `${date}T09:00:00.000Z`,
+    });
+  }
+  assert.deepEqual(p.chars[0].evolvedStages, [], '前提: まだ だい1しんか を実現していない');
+
+  const { player, result } = addRecord(p, {
+    id: 'r5', count: 15, mode: 'no', date: '2026-07-05', now: '2026-07-05T09:00:00.000Z',
+  });
+
+  assert.equal(result.evolvedTo, 1, '前提: この記録で だい1しんか(stage1) を実現する');
+  assert.deepEqual(player.chars.find((c) => c.charId === 'hinoko').evolvedStages, [1]);
+  assert.ok(
+    result.unlocks.some((u) => u.choices.includes('pikari')),
+    'だい1しんか が実現した瞬間の result.unlocks に ぴかり が入っていない',
+  );
+});
+
+test('P10-b addRecord: 承認ON でも、だい1しんか を実現済みのキャラがいれば ぴかり の解放待ちを見逃さない', () => {
+  const p = base('hinoko');
+  p.chars[0].evolvedStages = [1]; // 既にだい1しんかを実現済み
+  p.settings.approvalEnabled = true;
+
+  const { result } = addRecord(p, {
+    id: 'q1', count: 10, mode: 'no', date: '2026-07-26', now: NOW,
+  });
+
+  assert.equal(result.queued, true, '前提: 承認待ちに入るだけでEXPは動かない');
+  assert.ok(
+    result.unlocks.some((u) => u.choices.includes('pikari')),
+    'だい1しんか実現済みなら、承認待ちの時点でも ぴかり の解放待ちが見えるべき',
+  );
+});
+
+test('P10-c stageOf（潜在段階）を満たしただけで evolvedStages に積まれていないキャラがいても、ぴかりは出ない（だい1しんかを「実現した」ことで判定する。stageOfで判定してはいけない）', () => {
+  // しずく 第1進化: レベル12 / ノー10 or ワン35 / 連続10にち。
+  // ひのこ(育成中) 第1進化: レベル15 / ノー15 or ワン50 / 連続5にち。
+  // 両者ともレベル条件は最初から満たす(exp=9958でレベル26)。
+  // ノー9かいを10日連続で記録し、最終日だけ12かいにすると
+  //   しずく: ノー12>=10 かつ 連続10にち → 潜在段階(stageOf)が1になる
+  //   ひのこ: ノー12<15 → まだ条件を満たさず、進化しない（実測で確認済み）
+  // つまり「控えのキャラが条件を満たしただけ」で、誰も実現していない状況を作れる
+  const p = base('hinoko');
+  p.chars[0].exp = 9958;
+  p.chars.push({ charId: 'shizuku', nickname: null, exp: 9958, unlockedAt: NOW, evolvedStages: [] });
+
+  let cur = p;
+  for (let d = 1; d <= 9; d += 1) {
+    const date = `2026-07-0${d}`;
+    cur = addRecord(cur, {
+      id: `f${d}`, count: 9, mode: 'no', date, now: `${date}T09:00:00.000Z`,
+    }).player;
+  }
+  const { player, result } = addRecord(cur, {
+    id: 'r10', count: 12, mode: 'no', date: '2026-07-10', now: '2026-07-10T09:00:00.000Z',
+  });
+
+  assert.equal(result.evolvedTo, null, '前提: 育成中のひのこはこの記録では進化しない（実測: ノー12はまだ15未満）');
+  const hinoko = player.chars.find((c) => c.charId === 'hinoko');
+  const shizuku = player.chars.find((c) => c.charId === 'shizuku');
+  assert.deepEqual(hinoko.evolvedStages, [], '前提: ひのこは実現していない');
+  assert.deepEqual(shizuku.evolvedStages, [], '前提: しずくも実現していない（控えは条件を満たしても進化しない）');
+  assert.equal(stageOf(player, 'shizuku'), 1, '前提: しずくの潜在段階(判定用)は1を満たしている');
+
+  assert.ok(
+    !result.unlocks.some((u) => u.choices.includes('pikari')),
+    'だい1しんかを誰も「実現」していない（潜在段階だけ満たしている）ので、ぴかりは出てはいけない',
+  );
+});
+
 test('stageOf と progressOf: 進化前は次の段階の進捗を返す', () => {
   const p = base('hinoko');
   assert.equal(stageOf(p, 'hinoko'), 0);
@@ -364,4 +462,59 @@ test('progressOf: 最終形態に達していたら null', () => {
   }
   assert.equal(stageOf(p, 'hinoko'), 2);
   assert.equal(progressOf(p, 'hinoko'), null);
+});
+
+// =============================================================================
+// 2026-07-30 adversarial-reviewer 指摘（欠陥3・低）: maxEvolvedStageEver が
+// evolvedStages に非数値を含む手編集バックアップを渡されると NaN を返す。
+// displayStageOf（js/core/player.js:74-80）は同じ「evolvedStages から段階を
+// 求める」処理で Number.isFinite フィルタと 0〜2 のクランプを持っているが、
+// maxEvolvedStageEver（js/core/player.js:35-40）にはそれが無い。
+//
+// テスターが決めた仕様（丸め方）: displayStageOf と完全に同じ扱いに揃える。
+//   1. 各キャラの evolvedStages を Number.isFinite でフィルタする
+//      （真偽値・文字列・undefined は「実現した段階」として数えない）
+//   2. フィルタ後の最大値を Math.max(0, ...) ・Math.min(2, ...) で 0〜2 に丸める
+// この仕様のもとでは [true] は「1」ではなく「0」になる（現状の実装は
+// Math.max の型強制で偶然1を返しているが、booleanは段階の数値として
+// 扱うべきでないため、意図して displayStageOf と揃える）。
+// =============================================================================
+
+function playerWithEvolvedStages(stages) {
+  return { chars: [{ charId: 'hinoko', exp: 0, evolvedStages: stages }] };
+}
+
+test('E1 maxEvolvedStageEver は非数値混入でも壊れず、0〜2に丸めた数値を返す（displayStageOfと同じ扱い）', () => {
+  const cases = [
+    [[1, 'x'], 1],
+    [[undefined], 0],
+    [[true], 0],
+    [[1, 99], 2],
+    [[], 0],
+  ];
+  for (const [stages, expected] of cases) {
+    const value = maxEvolvedStageEver(playerWithEvolvedStages(stages));
+    assert.ok(Number.isFinite(value), `evolvedStages=${JSON.stringify(stages)} で NaN/Infinity になってはいけない（実際: ${value}）`);
+    assert.ok(value >= 0 && value <= 2, `evolvedStages=${JSON.stringify(stages)} は 0〜2 の範囲であるべき（実際: ${value}）`);
+    assert.equal(value, expected, `evolvedStages=${JSON.stringify(stages)}`);
+  }
+});
+
+test('E2 再現: 手編集バックアップ由来の非数値混入 evolvedStages（[1,"だい1しんか"]）でも、ぴかりの解放が正しく判定される（欠陥3の再現）', () => {
+  const p = base('hinoko');
+  // 実際にひのこがだい1しんかを実現している(1)うえに、手編集で紛れ込んだ
+  // 非数値要素("だい1しんか")が混ざっているケース。
+  // storage.js の検証は Array.isArray しか見ておらず要素は検証しないため、
+  // このデータは読み込みを通過してしまう
+  p.chars[0].evolvedStages = [1, 'だい1しんか'];
+
+  const value = maxEvolvedStageEver(p);
+  assert.ok(Number.isFinite(value), `NaN になってはいけない（実際: ${value}）。NaN だと ">= 1" が常に false になり、`
+    + 'ひのこが実際に進化していてもぴかりが一切出ない');
+
+  const unlocks = pendingUnlocks(maxLevelEver(p), p.chars.map((c) => c.charId), value);
+  assert.ok(
+    unlocks.some((u) => u.kind === 'evolution' && u.choices.includes('pikari')),
+    `非数値が混ざっていても、実際に実現している段階(1)ぶんはぴかりの解放に反映されるべき（unlocks: ${JSON.stringify(unlocks)})`,
+  );
 });
