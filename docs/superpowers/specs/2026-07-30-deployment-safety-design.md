@@ -67,6 +67,7 @@ Workflowとjobの名前はブランチ保護設定で参照するため、固定
 
 - `index.html`
 - `manifest.json`
+- `sw.js`
 - `css/**`
 - `js/**`
 - `icons/**`
