@@ -23,7 +23,8 @@
 2. **コードを写している箇所は特に疑う。**そのまま貼らず、実物を開いてコピーする
 3. 食い違いを見つけたら、**コードを正とし、この文書を直す**
 
-一方で **`node --test test/*.test.js` の 420件は信頼できます。**文書と違って機械が守っています。
+一方で **`node --test test/*.test.js` の既存420件は信頼できます。**本書の安全化作業で10件を追加し、
+現在は430件です。文書と違って機械が守っています。
 迷ったらテストを読むのが最短です。
 
 ---
@@ -51,7 +52,7 @@ node --test test/*.test.js
 
 **重要**: Node 24 では `node --test test/`（ディレクトリ指定）は `MODULE_NOT_FOUND` になるため、**glob 展開必須**。
 
-現在 **420テスト全通過** / `CACHE_NAME = liftingmaster-v14` / `SCHEMA_VERSION = 2`
+現在 **430テスト全通過** / `CACHE_NAME = liftingmaster-v14` / `SCHEMA_VERSION = 2`
 
 ### ローカル配信（開発時）
 ```bash
@@ -75,9 +76,9 @@ PWA アイコンを生成。
 
 ## 現在の状態
 
-- **最新コミット**: `67f5fe4`（2026-07-30）
+- **最新コミット**: 固定値は書かない。`git log -1 --oneline` で実物を確認
 - **デプロイ版**: `liftingmaster-v14`
-- **テスト**: 420件全通過
+- **テスト**: 430件全通過
 - **本番稼働**: 安部さんのお子さんが毎日使用中
 
 **キャラクター実装の進捗**:
@@ -97,7 +98,9 @@ npm test
 
 ### 2. ファイルを増やしたら `sw.js` の `ASSETS` に追加する
 
-**特に画像ファイル**は必須。オフラインキャッシュに登録しないと、Service Worker がキャッシュ内のファイルだけ配信するため、新しい画像が表示されません。
+**特に画像ファイル**は必須。`ASSETS` は Service Worker のインストール時に事前キャッシュする一覧です。
+未登録でもオンライン時の初回アクセスではネットワークから取得され、成功すれば動的にキャッシュされますが、
+未取得の端末ではオフライン表示が壊れます。初回から確実にオフライン利用できるよう必ず登録してください。
 
 ### 3. `CACHE_NAME` を必ず上げる
 
@@ -116,9 +119,10 @@ Service Worker はキャッシュ優先で動作するため、これを忘れ�
 node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const listed=new Set([...sw.matchAll(/'\.\/([^']*)'/g)].map(m=>m[1]).filter(Boolean));const walk=(d,a=[])=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=d+'/'+e.name;if(e.isDirectory()){if(['node_modules','.git','.superpowers','.claude','incoming-art','test','tools','docs'].includes(e.name))continue;walk(p,a);}else a.push(p.replace('./',''));}return a;};const onDisk=walk('.').filter(f=>/\.(js|css|html|json|png)$/.test(f)&&f!=='package.json'&&f!=='sw.js');const missing=onDisk.filter(f=>!listed.has(f));console.log(missing.length?'漏れ: '+missing.join(', '):'漏れなし');"
 ```
 
-### 5. GitHub に push
+### 5. 作業ブランチを push して Pull Request
 
-`main` ブランチへの push で、GitHub Pages がそのまま本番に反映されます。
+作業ブランチを push して Pull Request を作り、`node-test` が成功してからマージします。
+`main` への直接 push はしません。Pull Request のマージが GitHub Pages の本番反映になります。
 
 ---
 
@@ -233,7 +237,8 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 
 **症状**: 画像を追加したのに、その画面がオフラインで壊れる。
 
-**原因**: Service Worker は `ASSETS` リストのファイルだけをキャッシュするため、リストに無いファイルはオフラインで読み込めません。
+**原因**: `ASSETS` リストのファイルだけがインストール時に事前キャッシュされます。リストに無いファイルは
+オンラインで一度取得すれば動的にキャッシュされますが、未取得の端末ではオフラインで読み込めません。
 
 **対策**: ファイルを増やしたら必ず `sw.js` の `ASSETS` に追加し、テスト・突合を走らせる。
 
@@ -243,7 +248,9 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 
 **原因**: Service Worker はキャッシュ優先で動作するため、キャッシュ名を変えないと新しいキャッシュが作られません。
 
-**対策**: `sw.js` の `CACHE_NAME` を必ず上げる（`liftingmaster-v13` → `liftingmaster-v14` など）。**これだけは機械では判定できないので手で確認**。
+**対策**: `sw.js` の `CACHE_NAME` を必ず上げる（`liftingmaster-v13` → `liftingmaster-v14` など）。
+`test/invariants.test.js` は形式と過去版への巻き戻しを検査し、Pull Request では
+`tools/check-cache-version.js` が配信対象の変更に対する今回の版上げを検査します。
 
 ### 罠 3 — `createdAt` を `slice(11,16)` で表示
 
@@ -548,8 +555,8 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 公開範囲        public          ← 無料の GitHub Pages を使う条件。private にすると配信が止まる
 既定ブランチ    main
 ブランチ保護    なし            ← main に直接 push できてしまう。人間が気をつけるしかない
-CI / Actions    なし（.github ディレクトリが存在しない）
-                → テストが通っているかを GitHub 側で保証する仕組みは無い。手で走らせること
+CI / Actions    test workflow（必須check名: node-test）
+                → Pull Request と main で全430テストを実行。PRでは CACHE_NAME の版上げも検査
 Pages の設定    source: main の / （ルート）、build_type: legacy、HTTPS 強制、status: built
 公開URL         https://liftingmaster.github.io/
 gh CLI          ryoichiabe-svg で認証済み（keyring）。この repo に admin 権限あり
@@ -568,13 +575,12 @@ repo 名が `<Org名>.github.io` の形だからこそ、**パスなしのルー
 ```bash
 git switch -c feature/なにをするか     # main で直接作業しない
 # ...実装...
-node --test test/*.test.js             # 全件通ることを確認（CIは無い）
-# sw.js の CACHE_NAME を上げる（上げ忘れると端末に届かない。機械検査では検出できない）
+node --test test/*.test.js             # 全件通ることをローカルでも確認
+# 配信対象を変えたら sw.js の CACHE_NAME を上げる（PRでも機械検査される）
 git add -A && git commit
-git switch main
-git merge --no-ff feature/なにをするか
-node --test test/*.test.js             # マージ後にもう一度
-git push origin main                   # ← ここで本番が入れ替わる
+git push -u origin feature/なにをするか
+gh pr create --base main               # node-test 成功を確認してからマージ
+gh pr merge --merge                    # ← ここで本番が入れ替わる
 ```
 
 ### 反映されたかの確認
