@@ -34,6 +34,15 @@ export function checkCacheVersion({ changedPaths, baseSw, headSw }) {
       message: `配信対象を変更したが CACHE_NAME が変更されていない: ${headName}`,
     };
   }
+  const baseVersion = Number(baseName.slice('liftingmaster-v'.length));
+  const headVersion = Number(headName.slice('liftingmaster-v'.length));
+  if (headVersion <= baseVersion) {
+    return {
+      ok: false,
+      deployableChanged: true,
+      message: `CACHE_NAME は基準より大きい版番号にする: ${baseName} -> ${headName}`,
+    };
+  }
 
   return {
     ok: true,
@@ -54,6 +63,7 @@ export function runCli(argv) {
 
   const changedPaths = git([
     'diff',
+    '--no-renames',
     '--name-only',
     '--diff-filter=ACDMRT',
     `${base}...${head}`,

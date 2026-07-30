@@ -24,7 +24,7 @@
 3. 食い違いを見つけたら、**コードを正とし、この文書を直す**
 
 一方で **`node --test test/*.test.js` の既存420件は信頼できます。**本書の安全化作業で10件を追加し、
-現在は430件です。文書と違って機械が守っています。
+現在は432件です。文書と違って機械が守っています。
 迷ったらテストを読むのが最短です。
 
 ---
@@ -52,7 +52,7 @@ node --test test/*.test.js
 
 **重要**: Node 24 では `node --test test/`（ディレクトリ指定）は `MODULE_NOT_FOUND` になるため、**glob 展開必須**。
 
-現在 **430テスト全通過** / `CACHE_NAME = liftingmaster-v14` / `SCHEMA_VERSION = 2`
+現在 **432テスト全通過** / `CACHE_NAME = liftingmaster-v14` / `SCHEMA_VERSION = 2`
 
 ### ローカル配信（開発時）
 ```bash
@@ -78,7 +78,7 @@ PWA アイコンを生成。
 
 - **最新コミット**: 固定値は書かない。`git log -1 --oneline` で実物を確認
 - **デプロイ版**: `liftingmaster-v14`
-- **テスト**: 430件全通過
+- **テスト**: 432件全通過
 - **本番稼働**: 安部さんのお子さんが毎日使用中
 
 **キャラクター実装の進捗**:
@@ -556,7 +556,7 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 既定ブランチ    main
 ブランチ保護    なし            ← main に直接 push できてしまう。人間が気をつけるしかない
 CI / Actions    test workflow（必須check名: node-test）
-                → Pull Request と main で全430テストを実行。PRでは CACHE_NAME の版上げも検査
+                → Pull Request と main で全432テストを実行。PRでは CACHE_NAME の版上げも検査
 Pages の設定    source: main の / （ルート）、build_type: legacy、HTTPS 強制、status: built
 公開URL         https://liftingmaster.github.io/
 gh CLI          ryoichiabe-svg で認証済み（keyring）。この repo に admin 権限あり

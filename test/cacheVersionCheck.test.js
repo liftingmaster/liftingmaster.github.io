@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -83,6 +84,16 @@ test('複数桁の版番号をそのまま比較できる', () => {
   assert.equal(readCacheName(sw(123)), 'liftingmaster-v123');
 });
 
+test('CACHE_NAMEを前の番号へ戻す変更は拒否する', () => {
+  const result = checkCacheVersion({
+    changedPaths: ['js/app.js', 'sw.js'],
+    baseSw: sw(14),
+    headSw: sw(13),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /大きい版番号/);
+});
+
 test('CLIは配信変更の版上げ漏れを拒否し、版上げ後は許可する', () => {
   const repo = mkdtempSync(join(tmpdir(), 'lifting-cache-check-'));
   try {
@@ -120,6 +131,37 @@ test('CLIは配信変更の版上げ漏れを拒否し、版上げ後は許可�
     });
     assert.equal(result.status, 0);
     assert.match(result.stdout, /liftingmaster-v14 -> liftingmaster-v15/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('CLIは配信ファイルを非配信場所へ移す変更にも版上げを要求する', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'lifting-cache-rename-'));
+  try {
+    git(repo, 'init');
+    git(repo, 'config', 'user.name', 'Cache Check Test');
+    git(repo, 'config', 'user.email', 'cache-check@example.invalid');
+    git(repo, 'config', 'core.autocrlf', 'false');
+    mkdirSync(join(repo, 'js'));
+    writeFileSync(join(repo, 'sw.js'), sw(14));
+    writeFileSync(join(repo, 'js', 'app.js'), 'export const value = 1;\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-m', 'base');
+    const base = git(repo, 'rev-parse', 'HEAD');
+
+    mkdirSync(join(repo, 'docs'));
+    renameSync(join(repo, 'js', 'app.js'), join(repo, 'docs', 'app.js'));
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-m', 'move app out of deployable paths');
+    const moved = git(repo, 'rev-parse', 'HEAD');
+
+    const result = spawnSync(process.execPath, [SCRIPT, base, moved], {
+      cwd: repo,
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /CACHE_NAME.*変更されていない/);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
