@@ -536,10 +536,87 @@ export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) 
 
 ---
 
+## GitHub と配信のしくみ（作業前に必ず読む）
+
+**いちばん大事なこと: `main` への push は、そのまま本番反映です。**ステージング環境も
+承認フローもありません。お子さんが実際に使っているアプリが 1〜2分で入れ替わります。
+
+### 事実（すべて `gh api` で確認した値）
+
+```
+リポジトリ      liftingmaster/liftingmaster.github.io
+公開範囲        public          ← 無料の GitHub Pages を使う条件。private にすると配信が止まる
+既定ブランチ    main
+ブランチ保護    なし            ← main に直接 push できてしまう。人間が気をつけるしかない
+CI / Actions    なし（.github ディレクトリが存在しない）
+                → テストが通っているかを GitHub 側で保証する仕組みは無い。手で走らせること
+Pages の設定    source: main の / （ルート）、build_type: legacy、HTTPS 強制、status: built
+公開URL         https://liftingmaster.github.io/
+gh CLI          ryoichiabe-svg で認証済み（keyring）。この repo に admin 権限あり
+```
+
+### repo 名を変えてはいけない
+
+repo 名が `<Org名>.github.io` の形だからこそ、**パスなしのルート**で配信されています
+（`liftingmaster.github.io/lifting-master/` のようなサブパスにならない）。
+リネームすると URL が変わり、**localStorage はオリジン単位なのでお子さんの記録が見えなくなります**。
+2026-07-29 の移転（`ryoichiabe-svg.github.io/lifting-master/` → 現URL）で実際にこれが起き、
+バックアップの書き出しと読み込みで移しました。**旧URLはもう動きません。**
+
+### 作業の流れ
+
+```bash
+git switch -c feature/なにをするか     # main で直接作業しない
+# ...実装...
+node --test test/*.test.js             # 全件通ることを確認（CIは無い）
+# sw.js の CACHE_NAME を上げる（上げ忘れると端末に届かない。機械検査では検出できない）
+git add -A && git commit
+git switch main
+git merge --no-ff feature/なにをするか
+node --test test/*.test.js             # マージ後にもう一度
+git push origin main                   # ← ここで本番が入れ替わる
+```
+
+### 反映されたかの確認
+
+Pages のビルドに1〜2分かかります。**`CACHE_NAME` を見るのが確実**です。
+
+```bash
+curl -s -H 'Cache-Control: no-cache' https://liftingmaster.github.io/sw.js | grep -o "liftingmaster-v[0-9]*"
+```
+
+上げた版が返ってくれば反映済み。返らなければまだビルド中です。
+
+### 元に戻したいとき
+
+```bash
+git revert <マージコミットのハッシュ> -m 1
+git push origin main
+```
+
+`CACHE_NAME` も戻ることになりますが、**`test/invariants.test.js` に「過去の版へ戻していないこと」の
+検査がある**ため、テストが落ちます。revert のあとは `CACHE_NAME` を「戻した先より大きい新しい版」に
+付け替えてから push してください（例: v14 → revert → v15）。
+
+### 未マージのブランチが残っている
+
+```
+feature/art-shizuku-happa / feature/daily-exp-cap /
+feature/evolution-gating / feature/record-edit-and-dual-mode
+```
+
+いずれも `main` にマージ済みの作業ブランチで、残っているだけです。消しても構いません。
+
+### public だが秘密情報は無い
+
+コードとキャラ画像だけで、**お子さんの記録がここに入ることはありません**（記録は端末の
+localStorage のみ）。親のパスワードもハッシュで端末内にしかありません。
+
+---
+
 ## 環境
 
 - **Node.js**: v24.18.0 以上（`node --test` 必須）
 - **ブラウザ**: ローカル検証は Chrome。iOS/Android は実機確認が必要
-- **デプロイ**: GitHub Pages（`main` ブランチの push で自動反映）
-- **git**: リモート `origin` = `https://github.com/liftingmaster/liftingmaster.github.io.git`。feature ブランチで作業 → `main` に `--no-ff` マージ → push で本番反映
+- **依存パッケージ**: ゼロ。`npm install` は不要（`package.json` に dependencies が無い）
 
