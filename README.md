@@ -174,8 +174,17 @@ node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const l
 あわせて `CACHE_NAME` の版を必ず上げること。上げないと古いキャッシュが配られ、
 変更が端末に届かない。
 
-リポジトリは public。GitHub Pages を無料で使う条件のため。
-秘密情報は含まれておらず、子供の記録がここに入ることもない。
+### リポジトリの公開方針
+
+2026-07-31 に、無料の GitHub Pages と単純な本番運用を維持するため、当面 public のまま
+運用すると決定した。feature ブランチと Pull Request も公開される。秘密情報、認証情報、
+子供の記録を書き出した JSON、個人情報は commit / push しない。記録は端末の
+`localStorage` のみに保存する。
+
+商品化、バックエンド・外部 API の導入、非公開の設計資料、複数人開発のいずれかが始まる
+段階で、private な開発 repo への移行を再検討する。GitHub Free のまま現在の repo を private
+にすると本番 Pages が停止するため、先に移行方法か契約変更を決めること。判断の詳細と禁止事項は
+`HANDOFF.md` の「リポジトリの公開方針」を正本とする。
 
 ## キャラクターについて
 
