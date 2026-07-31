@@ -12,42 +12,30 @@ import { installDom } from './helpers/minidom.js';
 // 「before は常に保存値」に差し戻したあとの core から取り直している。
 // B1・B2 の 23／22 という数字は、差し戻し**前**（日ごとに帳簿を切り替えていた
 // 壊れた実装）の実測表から取られており、差し戻し後は 1レベルずつ上にずれる
-// （8手目終了 exp=7878=Lv24 → 9手目 exp=6974=Lv23）。
+// 新しいEXP曲線でも回数を調整し、8手目Lv24 → 9手目Lv23を再現する。
 // 現象（さかのぼり入力で +0 EXP なのに育成中キャラのレベルが下がる／画面がそれを
 // 隠す）は同じなので、テスト側の数字だけを直せば B1・B2 はそのまま通る。
 // テストの書き換えは禁止されているため、ここに正しい数字で並走させ、
 // B1・B2 の扱いは安部さんの判断を仰ぐ（報告参照）。
 //
 // 期待値の出どころ（差し戻し後の core を電卓として使わずに追える形で残す）:
-//   手順1 7/16 ノー570 → +3420  exp 3420  Lv18
-//   手順2 7/20 ワン435 → +870   exp 4290  Lv19
-//   手順3 7/17 ワン496 → +992   exp 5282  Lv21
-//   手順4 7/16 ノー216 → +0     exp 5282  Lv21
-//   手順5 7/18 ワン548 → +548   exp 5830  Lv22
-//   手順6 7/17 ノー316 → +904   exp 6734  Lv23（7/17の勝者がワン→ノーに反転。
-//         r3 の 992 が 0 になり r6 に 1896 が入るので、キャラの増分は +904）
-//   手順7 7/21 ワン596 → +596   exp 7330  Lv23
-//   手順8 7/18 ワン114 → +548   exp 7878  Lv24（114自身は +0。手順6で r3 が 0に
-//         なったため 7/18 を引き直すと当時の水準が 4290＝Lv20以下になり、
-//         すくすく(×2)が乗って r5 が 548→1096 に増える。その差 +548 が
-//         「保存値で引く」ことで初めて exp にも反映される＝欠陥Aの是正点）
-//   手順9 7/17 ワン282 → −904   exp 6974  Lv23（7/17の勝者がノー→ワンに再反転。
-//         r6 の 1896 が 0 になり r3 が 992 に戻る。282自身は +0）
+//   手順1〜8のexp: 342, 430, 530, 530, 585, 677, 737, 792（Lv24）
+//   手順9で7/17の勝者が再反転し、exp=700（Lv23）へ下がる。
 // どの手順でも exp == Σ grantedExp（保存則は破れない。A1が別途固定している）。
 // =============================================================================
 
 const A1_STEPS = [
-  { date: '2026-07-16', mode: 'no', count: 570 },
-  { date: '2026-07-20', mode: 'one', count: 435 },
-  { date: '2026-07-17', mode: 'one', count: 496 },
-  { date: '2026-07-16', mode: 'no', count: 216 },
-  { date: '2026-07-18', mode: 'one', count: 548 },
-  { date: '2026-07-17', mode: 'no', count: 316 },
-  { date: '2026-07-21', mode: 'one', count: 596 },
-  { date: '2026-07-18', mode: 'one', count: 114 },
+  { date: '2026-07-16', mode: 'no', count: 57 },
+  { date: '2026-07-20', mode: 'one', count: 44 },
+  { date: '2026-07-17', mode: 'one', count: 50 },
+  { date: '2026-07-16', mode: 'no', count: 22 },
+  { date: '2026-07-18', mode: 'one', count: 55 },
+  { date: '2026-07-17', mode: 'no', count: 32 },
+  { date: '2026-07-21', mode: 'one', count: 60 },
+  { date: '2026-07-18', mode: 'one', count: 11 },
 ];
 
-const EXPECTED = [3420, 4290, 5282, 5282, 5830, 6734, 7330, 7878];
+const EXPECTED = [342, 430, 530, 530, 585, 677, 737, 792];
 
 function buildSetup() {
   let cur = createPlayer({
@@ -81,12 +69,12 @@ test('B1x 9手の再現（差し戻し後）: 各手順で exp が期待値ど�
 test('B1x core: 9手目（さかのぼり入力・+0 EXP）で育成中キャラ自身が Lv24 → Lv23 に落ち、result がそれを報告する', () => {
   const setup = buildSetup();
   const { player, result } = addRecord(setup, {
-    id: 'r9', count: 282, mode: 'one', date: '2026-07-17', now: '2026-07-22T18:00:00.000Z',
+    id: 'r9', count: 28, mode: 'one', date: '2026-07-17', now: '2026-07-22T18:00:00.000Z',
   });
 
   const sum = player.records.reduce((a, r) => a + (r.grantedExp || 0), 0);
-  assert.equal(player.chars[0].exp, 6974, '9手目の exp');
-  assert.equal(sum, 6974, '9手目も記録の合計と一致（ズレ0）');
+  assert.equal(player.chars[0].exp, 700, '9手目の exp');
+  assert.equal(sum, 700, '9手目も記録の合計と一致（ズレ0）');
   assert.equal(levelFromExp(player.chars[0].exp).level, 23);
 
   assert.equal(result.exp, 0, 'この記録自身は +0 EXP');
@@ -124,7 +112,7 @@ test('B2x recordInput の render()/commit(): +0 EXP でもレベル低下が け
   datePick.fire('change');
   card.querySelector('#modeOne').click();
   const pad = card.querySelector('#pad');
-  for (const d of ['2', '8', '2']) pad.children.find((c) => c.textContent === d).click();
+  for (const d of ['2', '8']) pad.children.find((c) => c.textContent === d).click();
   card.querySelector('#save').click();
 
   assert.equal(levelFromExp(player.chars[0].exp).level, 23, '前提: 実際に Lv24 → Lv23 に落ちている');

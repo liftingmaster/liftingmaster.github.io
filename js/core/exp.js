@@ -3,7 +3,7 @@ export const MAX_LEVEL = 100;
 /** 現在レベルから次のレベルに上がるのに必要なEXP。Lv100以上は0 */
 export function expToNext(level) {
   if (level >= MAX_LEVEL) return 0;
-  return Math.round(3 * Math.pow(level, 1.8));
+  return Math.max(1, Math.round(0.3 * Math.pow(level, 1.8)));
 }
 
 /** 累計EXPからレベルと内訳を求める */

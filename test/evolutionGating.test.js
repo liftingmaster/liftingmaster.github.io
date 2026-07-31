@@ -141,7 +141,7 @@ test('G5 なおす／けすで兄弟キャラのEXPが動いて潜在段階が�
   assert.ok(mokumoChange);
   assert.equal(mokumoChange.expDelta, 50, 'EXP増減はcharChangesに載る');
   assert.equal(mokumoChange.levelBefore, 14, 'レベル低下・上昇の確認に必要なので維持');
-  assert.equal(mokumoChange.levelAfter, 15);
+  assert.equal(mokumoChange.levelAfter, 16);
   assert.equal(mokumoChange.evolvedTo, null, '育成中でないもくもは進化しない');
   assert.deepEqual(player.chars.find((c) => c.charId === 'mokumo').evolvedStages, []);
 });

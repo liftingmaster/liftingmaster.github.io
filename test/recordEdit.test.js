@@ -82,26 +82,26 @@ test('editRecord: 新データの単発ケースで回数を減らすと差額�
 //
 // 新しい導出: このケースは r1 が happa の唯一の記録（グループ＝全記録）。
 // before は**保存値そのもの**（グループ内のリプレイではなく）＝3000。
-// after は変更後の回数でこのグループを baseExp(=4384) から引き直した値。
+// after は変更後の回数でこのグループをLv20のbaseExpから引き直した値。
 //   before = 3000（保存値。すくすく込みの旧い計算結果がそのまま入っている）
-//   after  = gain(count=100, charExp=4384) = 100×1×2(すくすく) = 200
+//   after  = gain(count=100, charExp=Lv20基準) = 100×1×2(すくすく) = 200
 //   diff = 200 − 3000 = −2800 → exp = 7384 − 2800 = 4584
 // 「取り消した後のexp水準で特性を再判定する」という旧テスト名の主張自体は
-// 「afterの計算にbaseExp(4384)を使う」という形で維持されるが、beforeを
+// 「afterの計算にLv20のbaseExpを使う」という形で維持されるが、beforeを
 // リプレイ値(100)ではなく保存値(3000)にしたことで、diffの符号・大きさが変わる。
 test('editRecord: 特性の再判定は「取り消した後」のexp水準で行う（2026-07-29 beforeは常に保存値の方針に差し戻し）', () => {
-  // はっぱ すくすく: Lv20以下で2倍。Lv20到達=4384EXP、Lv21到達=5043EXP
-  // （gain.test.js で確認済みの既知の値）
+  // はっぱ すくすく: Lv20以下で2倍
+  const baseExp = totalExpForLevel(20);
   const p = base('happa');
-  p.chars[0].exp = 4384 + 3000; // 7384。baseExp(4384)+この記録の保存値(3000)
+  p.chars[0].exp = baseExp + 3000;
   p.records = [
     { id: 'r1', date: '2026-07-26', mode: 'one', count: 50, createdAt: NOW, charId: 'happa', grantedExp: 3000 },
   ];
   const { player, result } = editRecord(p, { recordId: 'r1', count: 100, now: NOW });
-  // before = 3000（保存値、常に） / after = 100×1×2(すくすく,baseExp=4384) = 200
-  // diff = 200 − 3000 = −2800 → exp = 7384 − 2800 = 4584
+  // before = 3000（保存値、常に） / after = 100×1×2(すくすく,Lv20) = 200
+  // diff = 200 − 3000 = −2800
   assert.equal(result.expDelta, -2800);
-  assert.equal(activeCharEntry(player).exp, 4584);
+  assert.equal(activeCharEntry(player).exp, baseExp + 200);
   assert.equal(player.records.find((r) => r.id === 'r1').grantedExp, 200);
 });
 

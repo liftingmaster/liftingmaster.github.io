@@ -88,7 +88,7 @@ test('D3-f 承認まちのエントリ（charChangesが空）では何も出さ�
 // 欠陥3の再現手順そのもの。core の実際の出力を通して確かめる
 // -----------------------------------------------------------------------------
 
-test('D3-g 再現手順: ひのこで ノー8 → もくもに切り替えて 同じ日に ワン30 で、ひのこ Lv4→Lv1 が拾える', () => {
+test('D3-g 再現手順: ひのこで ノー1 → もくもに切り替えて 同じ日に ワン3 で、ひのこ Lv4→Lv1 が拾える', () => {
   const p = createPlayer({
     id: 'p1', name: 'たろう', starterId: 'hinoko', now: NOW,
   });
@@ -97,22 +97,22 @@ test('D3-g 再現手順: ひのこで ノー8 → もくもに切り替えて �
   });
 
   const first = addRecord(p, {
-    id: 'r1', count: 8, mode: 'no', date: '2026-07-20', now: '2026-07-20T09:00:00.000Z',
+    id: 'r1', count: 1, mode: 'no', date: '2026-07-20', now: '2026-07-20T09:00:00.000Z',
   });
-  assert.equal(first.player.chars.find((c) => c.charId === 'hinoko').exp, 36, '前提: ひのこ 36EXP');
-  assert.equal(levelFromExp(36).level, 4, '前提: Lv4');
+  assert.equal(first.player.chars.find((c) => c.charId === 'hinoko').exp, 5, '前提: ひのこ 5EXP');
+  assert.equal(levelFromExp(5).level, 4, '前提: Lv4');
 
   const switched = switchChar(first.player, 'mokumo').player;
   const second = addRecord(switched, {
-    id: 'r2', count: 30, mode: 'one', date: '2026-07-20', now: '2026-07-20T10:00:00.000Z',
+    id: 'r2', count: 3, mode: 'one', date: '2026-07-20', now: '2026-07-20T10:00:00.000Z',
   });
 
   const entries = [{ result: second.result, charId: 'mokumo' }];
   assert.deepEqual(benchedLevelDrops(entries, ['mokumo']), [{
-    charId: 'hinoko', levelBefore: 4, levelAfter: 1, expDelta: -36,
+    charId: 'hinoko', levelBefore: 4, levelAfter: 1, expDelta: -5,
   }], 'ひのこが Lv4 → Lv1 に落ちたことを、けっか画面が拾えること');
   assert.equal(second.player.chars.find((c) => c.charId === 'hinoko').exp, 0);
-  assert.equal(second.player.chars.find((c) => c.charId === 'mokumo').exp, 60);
+  assert.equal(second.player.chars.find((c) => c.charId === 'mokumo').exp, 6);
 });
 
 // -----------------------------------------------------------------------------
@@ -186,14 +186,14 @@ test('D4-e textWidth は全角=1em・半角=0.6em・空白=0.25emで数える', 
 // =============================================================================
 
 const A1_SETUP_STEPS = [
-  { date: '2026-07-16', mode: 'no', count: 570 },
-  { date: '2026-07-20', mode: 'one', count: 435 },
-  { date: '2026-07-17', mode: 'one', count: 496 },
-  { date: '2026-07-16', mode: 'no', count: 216 },
-  { date: '2026-07-18', mode: 'one', count: 548 },
-  { date: '2026-07-17', mode: 'no', count: 316 },
-  { date: '2026-07-21', mode: 'one', count: 596 },
-  { date: '2026-07-18', mode: 'one', count: 114 },
+  { date: '2026-07-16', mode: 'no', count: 57 },
+  { date: '2026-07-20', mode: 'one', count: 44 },
+  { date: '2026-07-17', mode: 'one', count: 50 },
+  { date: '2026-07-16', mode: 'no', count: 22 },
+  { date: '2026-07-18', mode: 'one', count: 55 },
+  { date: '2026-07-17', mode: 'no', count: 32 },
+  { date: '2026-07-21', mode: 'one', count: 60 },
+  { date: '2026-07-18', mode: 'one', count: 11 },
 ];
 
 function buildA1SetupPlayer() {
@@ -215,7 +215,7 @@ test('B1 addRecord（core）の result は、育成中キャラ自身のレベ�
 
   // 9手目: さかのぼって 7/17 にワン282 を追加する（さかのぼり入力）
   const { player, result } = addRecord(setup, {
-    id: 'r9', count: 282, mode: 'one', date: '2026-07-17', now: '2026-07-22T18:00:00.000Z',
+    id: 'r9', count: 28, mode: 'one', date: '2026-07-17', now: '2026-07-22T18:00:00.000Z',
   });
 
   assert.equal(levelFromExp(player.chars[0].exp).level, 23, '前提: 実際にはっぱはLv24→Lv23に落ちる');
@@ -255,17 +255,17 @@ test('B2 再現手順（recordInput.js の実際の render()/commit() を駆動�
   renderRecordInput(root, fakeApp);
   const card = root.querySelector('.card');
 
-  // さかのぼり入力: 7/17・ワン・282かい
+  // さかのぼり入力: 7/17・ワン・28かい
   const datePick = card.querySelector('#datePick');
   datePick.value = '2026-07-17';
   datePick.fire('change');
   card.querySelector('#modeOne').click();
 
   const pad = card.querySelector('#pad');
-  for (const digit of ['2', '8', '2']) {
+  for (const digit of ['2', '8']) {
     pad.children.find((c) => c.textContent === digit).click();
   }
-  assert.equal(card.querySelector('#display').textContent, '282', '前提: 282かいが入力されている');
+  assert.equal(card.querySelector('#display').textContent, '28', '前提: 28かいが入力されている');
   assert.equal(card.querySelector('#save').disabled, false, '前提: 保存ボタンが押せる状態');
 
   card.querySelector('#save').click();

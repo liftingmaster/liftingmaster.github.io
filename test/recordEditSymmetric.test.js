@@ -319,7 +319,7 @@ test('I7 charChanges: 兄弟キャラのレベルが下がったとき levelBefo
   const afterR2 = addRecord(switched, { id: 'r2', count: 200, mode: 'no', date: '2026-07-20', now: NOW });
   assert.equal(charExp(afterR2.player, 'hinoko'), 135);
   assert.equal(charExp(afterR2.player, 'mokumo'), 510);
-  assert.equal(levelFromExp(510).level, 9, '前提: もくもはLv9');
+  assert.equal(levelFromExp(510).level, 21, '前提: もくもはLv21');
 
   const { player, result } = editRecord(afterR2.player, { recordId: 'r1', count: 250, now: NOW });
   assert.equal(charExp(player, 'hinoko'), 1125);
@@ -329,7 +329,7 @@ test('I7 charChanges: 兄弟キャラのレベルが下がったとき levelBefo
   const mokumoChange = result.charChanges.find((c) => c.charId === 'mokumo');
   assert.ok(mokumoChange, 'もくもがcharChangesに入っている');
   assert.equal(mokumoChange.expDelta, -510);
-  assert.equal(mokumoChange.levelBefore, 9);
+  assert.equal(mokumoChange.levelBefore, 21);
   assert.equal(mokumoChange.levelAfter, 1);
   assert.ok(mokumoChange.levelBefore > mokumoChange.levelAfter, 'これがないとlevelDropNoticeが出せない（欠陥4-A本体）');
 
@@ -388,14 +388,14 @@ test('I8（反転）: 兄弟キャラ(育成中でない)が編集をきっか�
   // もくもは育成中ではないので進化は検知されない
   const { player, result } = editRecord(cur, { recordId: 'r1', count: 5, now: '2026-07-10T09:02:00.000Z' });
   assert.equal(charExp(player, 'mokumo'), (totalExpForLevel(15) - 10) + 50, 'EXPの数値自体はswitchCharの有無で変わらない');
-  assert.equal(levelFromExp(charExp(player, 'mokumo')).level, 15);
+  assert.equal(levelFromExp(charExp(player, 'mokumo')).level, 16);
   assert.equal(stageOf(player, 'mokumo'), 1, '潜在段階（判定用）は満たしている。意味は変えない');
 
   const mokumoChange = result.charChanges.find((c) => c.charId === 'mokumo');
   assert.ok(mokumoChange, 'もくものEXP増減はcharChangesに載る（レベル低下の確認に必要なので維持）');
   assert.equal(mokumoChange.expDelta, 50);
   assert.equal(mokumoChange.levelBefore, 14);
-  assert.equal(mokumoChange.levelAfter, 15);
+  assert.equal(mokumoChange.levelAfter, 16);
   assert.equal(mokumoChange.stageBefore, 0);
   assert.equal(mokumoChange.evolvedTo, null, '育成中でないもくもは進化しない（安部さんの判断の核心）');
   assert.deepEqual(charEntry(player, 'mokumo').evolvedStages, [], 'evolvedStagesも空のまま（絵は進化しない）');
@@ -432,7 +432,7 @@ test('I9（反転）: 削除で兄弟キャラ(育成中でない)が進化条�
   const { player, result } = deleteRecord(cur, { recordId: 'r1', now: NOW });
   assert.equal(charExp(player, 'hinoko'), 0);
   assert.equal(charExp(player, 'shizuku'), 1080, 'しずくのEXPが0→1080に伸びる（数値はI9のまま）');
-  assert.equal(levelFromExp(1080).level, 12);
+  assert.equal(levelFromExp(1080).level, 27);
   assert.equal(stageOf(player, 'shizuku'), 1, '潜在段階（判定用）は満たしている');
 
   assert.equal(result.charId, 'hinoko', 'トップレベルの result は削除対象(ひのこ)のもの');
@@ -442,7 +442,7 @@ test('I9（反転）: 削除で兄弟キャラ(育成中でない)が進化条�
   assert.ok(shizukuChange, 'しずくのEXP増減はcharChangesに載る（レベル上昇の確認に必要なので維持）');
   assert.equal(shizukuChange.expDelta, 1080);
   assert.equal(shizukuChange.levelBefore, 1);
-  assert.equal(shizukuChange.levelAfter, 12);
+  assert.equal(shizukuChange.levelAfter, 27);
   assert.equal(shizukuChange.stageBefore, 0);
   assert.equal(shizukuChange.evolvedTo, null, '育成中でないしずくは進化しない');
   assert.deepEqual(charEntry(player, 'shizuku').evolvedStages, [], 'evolvedStagesも空のまま');
@@ -480,7 +480,7 @@ test('L1 レベル依存特性: はっぱ Lv1のときの記録を、レベル�
   const p = base('happa');
   // r1: 7/1にLv1で4かい（ノー）。sukusuku(×2)で 4×3×2=24
   // r2: 8/1に2000かい（ノー）。r1処理直後(charExp=24,Lv1)なのでsukusukuが乗り 2000×3×2=12000
-  // 合計 24+12000=12024（Lv28）。r1が「渡した」のは24
+  // 合計 24+12000=12024（新曲線ではLv64）。r1が「渡した」のは24
   p.chars[0].exp = 24 + 12000;
   p.records = [
     {
@@ -492,7 +492,7 @@ test('L1 レベル依存特性: はっぱ Lv1のときの記録を、レベル�
       charId: 'happa', grantedExp: 12000,
     },
   ];
-  assert.equal(levelFromExp(charExp(p, 'happa')).level, 28, '前提: r2の後はLv28');
+  assert.equal(levelFromExp(charExp(p, 'happa')).level, 64, '前提: r2の後はLv64');
 
   const { player, result } = deleteRecord(p, { recordId: 'r1', now: NOW });
   // 直し方どおりの baseExp = max(0, 12024-(24+12000)) = 0。
@@ -501,8 +501,8 @@ test('L1 レベル依存特性: はっぱ Lv1のときの記録を、レベル�
   // after : r1抜き。r2のみ非メンバーとして12000を加算 → after合計=12000
   // diff = 12000-12024 = -24 → expDelta=-24（渡した24とちょうど一致）
   //
-  // 現状（欠陥あり）の実測: baseExp = 12024-24(グループ内=r1自身のみ)=12000（Lv28相当）。
-  // r1をLv28水準で計算し直すとsukusukuが外れ 4×3=12 になり、expDelta=-12 になる
+  // 現状（欠陥あり）の実測: baseExp = 12024-24(グループ内=r1自身のみ)=12000（高レベル相当）。
+  // r1を高レベル水準で計算し直すとsukusukuが外れ 4×3=12 になり、expDelta=-12 になる
   // （渡した24の半分しか引き戻せない＝+12の水増しが残る。レビュアーの再現ケースそのもの）
   assert.equal(result.expDelta, -24, '渡した分(24)とちょうど一致する（現状は-12になる想定）');
   assert.equal(charExp(player, 'happa'), 12000);
@@ -524,7 +524,7 @@ test('L2 レベル依存特性: はっぱ Lv1のときの記録を訂正する�
   assert.equal(sameDay.result.expDelta, 2376);
   assert.equal(sameDay.player.records.find((r) => r.id === 'r1').grantedExp, 2400);
 
-  // 70日後に訂正（r2で先にLv28まで育っている。r1自身の記録内容は同じ）
+  // 70日後に訂正（r2で先にLv64まで育っている。r1自身の記録内容は同じ）
   const later = base('happa');
   later.chars[0].exp = 24 + 12000; // 前提はL1と同じ組み立て
   later.records = [
@@ -537,7 +537,7 @@ test('L2 レベル依存特性: はっぱ Lv1のときの記録を訂正する�
       charId: 'happa', grantedExp: 12000,
     },
   ];
-  assert.equal(levelFromExp(charExp(later, 'happa')).level, 28, '前提: 訂正前はLv28');
+  assert.equal(levelFromExp(charExp(later, 'happa')).level, 64, '前提: 訂正前はLv64');
   const laterEdit = editRecord(later, { recordId: 'r1', count: 400, now: NOW });
   // baseExp = max(0, 12024-(24+12000)) = 0。r1は7/1で最も早い記録なので
   // running(r1直前)=0。before(count=4,charExp=0)=24 / after(count=400,charExp=0)=2400
@@ -545,7 +545,7 @@ test('L2 レベル依存特性: はっぱ Lv1のときの記録を訂正する�
   //
   // 現状（欠陥あり）の実測: expDelta=1188（同日訂正の半分）。r1.grantedExp=1200。
   // baseExpが12000(=グループ内=r1自身のみを引いた値)まで上がってしまい、
-  // r1をLv28水準で計算し直すとsukusukuが外れるため。「訂正したタイミングだけで
+  // r1を高レベル水準で計算し直すとsukusukuが外れるため。「訂正したタイミングだけで
   // 結果が変わる」というレビュアーの指摘そのもの
   assert.equal(laterEdit.result.expDelta, 2376, '訂正のタイミングで結果が変わってはいけない（現状は1188になる想定）');
   assert.equal(laterEdit.player.records.find((r) => r.id === 'r1').grantedExp, 2400);
@@ -556,7 +556,7 @@ test('L3 レベル依存特性: きらら Lv50以上のときに、Lv1時代の�
   const p = base('kirara');
   // r1: 7/1にLv1で300かい（ノー）。きらめきはLv50以上でしか乗らないので通常倍率 300×3=900
   // r2: 8/1に54100かい（ノー）。r1直後(charExp=900,Lv11)なのでまだきらめきは乗らない
-  //     54100×3=162300。合計 900+162300=163200（Lv71）。r1が「渡した」のは900
+  //     54100×3=162300。合計 900+162300=163200（Lv100）。r1が「渡した」のは900
   p.chars[0].exp = 900 + 162300;
   p.records = [
     {
@@ -568,7 +568,7 @@ test('L3 レベル依存特性: きらら Lv50以上のときに、Lv1時代の�
       charId: 'kirara', grantedExp: 162300,
     },
   ];
-  assert.equal(levelFromExp(charExp(p, 'kirara')).level, 71, '前提: r2の後はLv71');
+  assert.equal(levelFromExp(charExp(p, 'kirara')).level, 100, '前提: r2の後はLv100');
 
   const { player, result } = deleteRecord(p, { recordId: 'r1', now: NOW });
   // baseExp = max(0, 163200-(900+162300)) = 0。before合計=163200 / after合計(r2のみ)=162300
@@ -602,7 +602,7 @@ test('L4 レベル依存特性: はっぱ、同じグループ内でリプレイ
   const { player, result } = editRecord(p, { recordId: 'r1', count: 1000, now: NOW });
   // グループ[r1,r2]を空(baseExp=0)から引き直す:
   //   r1: charExp=0(Lv1) → delta=1000-0=1000 → 1000×3×2(すくすく)=6000。running=6000
-  //   r2: charExp=6000。levelFromExp(6000)=Lv22(>20)なのでsukusukuが外れる
+  //   r2: charExp=6000。levelFromExp(6000)=Lv50(>20)なのでsukusukuが外れる
   //       → delta=1200-1000(dailyBest)=200 → 200×3×1=600
   // グループ合計=6600。before合計=7200(=6+7194)。diff=-600
   assert.equal(player.records.find((r) => r.id === 'r1').grantedExp, 6000);
@@ -627,7 +627,7 @@ test('L4 レベル依存特性: はっぱ、同じグループ内でリプレイ
 // つまりL5は「exp合計」だけでは欠陥を検出できないが、「編集対象記録自身の
 // grantedExpの往復」まで固定すればL5単独でも欠陥を検出できる
 // （このファイルでは両方を書き、検出力の違いをコメントで明示する）
-test('L5-1 往復不変: はっぱ Lv1記録を Lv28まで育った後に 4→40→4 と直しても元のexpに戻る', () => {
+test('L5-1 往復不変: はっぱ Lv1記録を高レベルまで育てた後に 4→40→4 と直しても元のexpに戻る', () => {
   const p = base('happa');
   p.chars[0].exp = 24 + 12000;
   p.records = [
@@ -646,7 +646,7 @@ test('L5-1 往復不変: はっぱ Lv1記録を Lv28まで育った後に 4→40
   assert.equal(back.player.records.find((r) => r.id === 'r1').grantedExp, 24);
 });
 
-test('L5-2 往復不変: はっぱ Lv1記録を Lv28まで育った後に 4→400→4 と直しても元のexpに戻る', () => {
+test('L5-2 往復不変: はっぱ Lv1記録を高レベルまで育てた後に 4→400→4 と直しても元のexpに戻る', () => {
   const p = base('happa');
   p.chars[0].exp = 24 + 12000;
   p.records = [
@@ -666,7 +666,7 @@ test('L5-2 往復不変: はっぱ Lv1記録を Lv28まで育った後に 4→40
   assert.equal(back.player.records.find((r) => r.id === 'r1').grantedExp, 24);
 });
 
-test('L5-3 往復不変: きらら Lv1記録を Lv71まで育った後に 300→3000→300 と直しても元のexpに戻る', () => {
+test('L5-3 往復不変: きらら Lv1記録をLv100まで育てた後に 300→3000→300 と直しても元のexpに戻る', () => {
   const p = base('kirara');
   p.chars[0].exp = 900 + 162300;
   p.records = [
@@ -754,7 +754,7 @@ test('S1 連続編集（2026-07-29差し戻し後は割り切りが解消。あ�
   assert.equal(step2.result.expDelta, -36);
 });
 
-test('S2 連続編集（2026-07-29差し戻し後は割り切りが解消。あるべき値=2250・Lv15になる）: ひのこ 5→500 のあと 400 を削除で exp=2250(Lv15) になる', () => {
+test('S2 連続編集: ひのこ 5→500 のあと 400 を削除すると記録どおり2250EXPへ戻る', () => {
   const p = base('hinoko');
   // 7/1:5かい(grant23) 7/5:400かい(自己ベスト更新,grant1800=400×3×1.5)
   p.chars[0].exp = 23 + 1800;
@@ -769,17 +769,17 @@ test('S2 連続編集（2026-07-29差し戻し後は割り切りが解消。あ�
     },
   ];
   const step1 = editRecord(p, { recordId: 'r1', count: 500, now: NOW });
-  // 7/1単独: 500×3×1.5=2250 → 1823+(2250-23)=4050（Lv19）
+  // 7/1単独: 500×3×1.5=2250 → 1823+(2250-23)=4050（新曲線ではLv43）
   assert.equal(charExp(step1.player, 'hinoko'), 4050);
-  assert.equal(levelFromExp(charExp(step1.player, 'hinoko')).level, 19);
+  assert.equal(levelFromExp(charExp(step1.player, 'hinoko')).level, 43);
 
   const step2 = deleteRecord(step1.player, { recordId: 'r2', now: NOW });
   // before は常に r2 の保存値(1800)。削除は「r2に実際に付与されていた1800を
-  // そのまま取り消す」だけなので、7/1単独分(2250・Lv15)にちょうど一致する。
+  // そのまま取り消す」だけなので、7/1単独分2250にちょうど一致する。
   // 2026-07-29差し戻し前は「あるべきは2250・Lv15」とコメントされていたが、
   // 実測は2850(Lv17)だった（2レベルぶんの残留）。差し戻し後は解消される
-  assert.equal(charExp(step2.player, 'hinoko'), 2250, '2026-07-29差し戻し後: 割り切りが解消され、あるべき値どおり2250(Lv15)になる（現状の実装は2850・Lv17を返す想定）');
-  assert.equal(levelFromExp(charExp(step2.player, 'hinoko')).level, 15);
+  assert.equal(charExp(step2.player, 'hinoko'), 2250, '保存済みの記録どおり2250EXPへ戻る');
+  assert.equal(levelFromExp(charExp(step2.player, 'hinoko')).level, 35);
 });
 
 test('S3 連続編集（2026-07-29差し戻し後は割り切りが解消。あるべき値=45になる）: ひのこ 400→10 のあと 300 を削除で exp=45 になる', () => {

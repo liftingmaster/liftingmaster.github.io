@@ -5,6 +5,7 @@ import {
 } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
 import { pickDayWinnerMode } from '../js/core/gain.js';
+import { totalExpForLevel } from '../js/core/exp.js';
 
 // =============================================================================
 // EXP頭打ちルール（2026-07-28 安部さんの判断）の回帰網。
@@ -315,35 +316,35 @@ test('N12: ひのこ(ノー)ともくも(ワン,兄弟)が同じ日に記録し�
 // -----------------------------------------------------------------------------
 
 test('N13: はっぱ すくすく。クロスモードの日を後から編集しても、判定に使うレベルは「その日を記録していなかった水準」のまま', () => {
-  // Lv20到達=4384EXP、Lv21到達=5043EXP（既存テストで確認済みの値）
+  const baseExp = totalExpForLevel(20);
   const p = base('happa');
-  p.chars[0].exp = 4384; // ちょうどLv20
+  p.chars[0].exp = baseExp; // ちょうどLv20
 
   let cur = p;
   // 07-01: ノー150とワン350を両方記録。soloValue(no150)@Lv20=900, soloValue(one350)@Lv20=700
-  // 勝者はノー(900)。expは4384+900=5284になる
+  // 勝者はノー(900)。expは基準+900になる
   cur = addRecord(cur, { id: 'no1', count: 150, mode: 'no', date: '2026-07-01', now: NOW }).player;
   cur = addRecord(cur, { id: 'one1', count: 350, mode: 'one', date: '2026-07-01', now: NOW }).player;
-  assert.equal(activeCharEntry(cur).exp, 5284);
+  assert.equal(activeCharEntry(cur).exp, baseExp + 900);
   assert.equal(cur.records.find((r) => r.id === 'one1').grantedExp, 0);
 
-  // 08-01: 別の日に2000かい記録。charExp=5284はLv21(>20)なのですくすくは乗らない
-  // soloValue(no2000)@5284(Lv21)=2000×3=6000。単独記録なので勝者
+  // 08-01: 別の日に2000かい記録。すでにLv21を超えているのですくすくは乗らない
+  // soloValue(no2000)=2000×3=6000。単独記録なので勝者
   cur = addRecord(cur, { id: 'no2', count: 2000, mode: 'no', date: '2026-08-01', now: NOW }).player;
-  assert.equal(activeCharEntry(cur).exp, 11284); // 5284+6000
+  assert.equal(activeCharEntry(cur).exp, baseExp + 900 + 6000);
 
   // 07-01のワンを 350→1000 に直す。判定に使う基準(baseExp)は「happaの全記録のgrantedExp
-  // 合計(900+0+6000=6900)を今のexp(11284)から引いた値」=4384（08-01の後付けの伸びを
+  // 合計(900+0+6000=6900)を今のexpから引いた値」=baseExp（08-01の後付けの伸びを
   // 除いた、07-01当時のLv20水準）で両モードを評価し直す必要がある
-  //   soloValue(no150)@4384(Lv20)=900（変わらない）
-  //   soloValue(one1000)@4384(Lv20すくすく×2)=1000×1×2=2000
+  //   soloValue(no150)@Lv20=900（変わらない）
+  //   soloValue(one1000)@Lv20すくすく×2=1000×1×2=2000
   // 勝敗が反転（ワン2000 > ノー900）。07-01の合計は900→2000に増える
   const { player, result } = editRecord(cur, { recordId: 'one1', count: 1000, now: NOW });
   assert.equal(player.records.find((r) => r.id === 'no1').grantedExp, 0, 'ノーは負け側に転落');
   assert.equal(player.records.find((r) => r.id === 'one1').grantedExp, 2000, 'ワンが勝者。すくすく(Lv20水準)がちゃんと乗っている');
   assert.equal(player.records.find((r) => r.id === 'no2').grantedExp, 6000, '別の日(08-01)は変わらない');
-  assert.equal(activeCharEntry(player).exp, 12384); // 4384(基準) + 2000(07-01) + 6000(08-01)
-  assert.equal(result.expDelta, 1100); // 12384-11284
+  assert.equal(activeCharEntry(player).exp, baseExp + 2000 + 6000);
+  assert.equal(result.expDelta, 1100);
 });
 
 // -----------------------------------------------------------------------------
