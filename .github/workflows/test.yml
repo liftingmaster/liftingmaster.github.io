@@ -1,0 +1,29 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run all tests
+        run: node --test test/*.test.js
+      - name: Require CACHE_NAME bump for deployable changes
+        if: github.event_name == 'pull_request'
+        run: >-
+          node tools/check-cache-version.js
+          ${{ github.event.pull_request.base.sha }}
+          ${{ github.event.pull_request.head.sha }}
