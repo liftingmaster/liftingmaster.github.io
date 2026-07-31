@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { addRecord, activeCharEntry } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
 import { dailyBest } from '../js/core/stats.js';
+import { totalExpForLevel } from '../js/core/exp.js';
 
 // 仕様: docs/superpowers/specs/2026-07-27-record-edit-and-dual-mode.md §4
 // （2026-07-28 EXP頭打ちルールで全面書き換え）
@@ -103,7 +104,7 @@ test('N2: 逆順（ワン30→ノー10）でも合計は60。順序不変', () =
 });
 
 test('N2-b: レベル依存特性（すくすく）がある場合でも、りょうほうの合計は適用順で変わらない（旧テストの反転）', () => {
-  // はっぱ すくすく: Lv20以下で2倍。Lv20到達=4384EXP、Lv21到達=5043EXP
+  // はっぱ すくすく: Lv20以下で2倍。曲線変更に追従するようLv20のEXPは関数から取得する
   //
   // 旧ルール（このテストの旧版）では「先に処理したモードがLv20のうちに
   // すくすくを使い切り、後に処理したモードはLv21超で通常倍率になる」ため
@@ -115,20 +116,21 @@ test('N2-b: レベル依存特性（すくすく）がある場合でも、り�
   // soloValue(ワン350) = 350×1×2(Lv20すくすく) = 700
   // 勝者はノー(900)。順序に関係なく合計は常に900
   const p = base('happa');
-  p.chars[0].exp = 4384; // ちょうどLv20
+  const baseExp = totalExpForLevel(20);
+  p.chars[0].exp = baseExp; // ちょうどLv20
   const countNo = 150;
   const countOne = 350;
 
   const noFirst = (() => {
     const r1 = addRecord(p, { id: 'a1', count: countNo, mode: 'no', date: '2026-07-26', now: NOW });
     const r2 = addRecord(r1.player, { id: 'a2', count: countOne, mode: 'one', date: '2026-07-26', now: NOW });
-    return activeCharEntry(r2.player).exp - 4384;
+    return activeCharEntry(r2.player).exp - baseExp;
   })();
 
   const oneFirst = (() => {
     const r1 = addRecord(p, { id: 'b1', count: countOne, mode: 'one', date: '2026-07-26', now: NOW });
     const r2 = addRecord(r1.player, { id: 'b2', count: countNo, mode: 'no', date: '2026-07-26', now: NOW });
-    return activeCharEntry(r2.player).exp - 4384;
+    return activeCharEntry(r2.player).exp - baseExp;
   })();
 
   assert.equal(noFirst, 900, 'no→one の合計は900');

@@ -150,7 +150,7 @@ test('js/core は DOM・localStorage・時計に触れない（純粋関数だ�
 //
 // 版を上げたら、この下限もいっしょに上げること（上げ忘れても緑にはならない。
 // 下限より小さい版に戻したときだけ落ちる）。
-const CACHE_VERSION_FLOOR = 10;
+const CACHE_VERSION_FLOOR = 15;
 
 // =============================================================================
 // 2026-07-30 追加: pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver) の
@@ -248,7 +248,7 @@ test('sw.js の CACHE_NAME は liftingmaster-v<数字> の形で、過去に使�
   const version = Number(m[1]);
   assert.ok(
     Number.isInteger(version) && version >= CACHE_VERSION_FLOOR,
-    `CACHE_NAME が v${version} になっている。過去に使った版（v${CACHE_VERSION_FLOOR} 以下）へ戻すと、`
+    `CACHE_NAME が v${version} になっている。過去に使った版（v${CACHE_VERSION_FLOOR} 未満）へ戻すと、`
     + 'その名前でキャッシュ済みの端末に古いファイルが残り続ける',
   );
 });

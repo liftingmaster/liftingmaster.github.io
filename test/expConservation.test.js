@@ -4,6 +4,7 @@ import {
   addRecord, approvePending, editRecord, deleteRecord, switchChar,
 } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
+import { levelFromExp, totalExpForLevel } from '../js/core/exp.js';
 
 // =============================================================================
 // EXPの保存則（キャラのexp == baseExp + Σ そのキャラのgrantedExp）の回帰網。
@@ -106,12 +107,12 @@ test('C1 保存則: add→(switch)→add→edit→delete の操作列で、各�
 });
 
 // -----------------------------------------------------------------------------
-// C2: 欠陥1の再現。同日3件（はっぱ・exp 4384）を承認する順番を変えても、
+// C2: 欠陥1の再現。同日3件（はっぱ・Lv20）を承認する順番を変えても、
 // 合計exp・grantedExpは一致するはず（現状は一致しない＝欠陥1）
 // -----------------------------------------------------------------------------
 
-test('C2 承認順序不変（欠陥1の再現）: はっぱ exp4384、同日3件を21:00→15:00→09:00の順で承認しても、09:00→15:00→21:00の順と同じexpになる', () => {
-  const BASE_EXP = 4384; // ちょうどLv20（sukusukuの境界）
+test('C2 承認順序不変（欠陥1の再現）: はっぱLv20で同日3件を逆順に承認しても同じexpになる', () => {
+  const BASE_EXP = totalExpForLevel(20);
 
   const buildQueued = () => {
     const p = base('happa', BASE_EXP);
@@ -137,9 +138,9 @@ test('C2 承認順序不変（欠陥1の再現）: はっぱ exp4384、同日3�
 
   const sumGranted = (player) => player.records.reduce((s, r) => s + (r.grantedExp || 0), 0);
 
-  // 手計算で確認済みの正しい値: 基準4384 + grantedExp合計1050 = 5434
-  assert.equal(forward.chars[0].exp, 5434, '正順の合計exp');
-  assert.equal(sumGranted(forward), 1050);
+  // 新曲線では最初の承認でLv20を越えるため、最終的な付与合計は750
+  assert.equal(forward.chars[0].exp, BASE_EXP + 750, '正順の合計exp');
+  assert.equal(sumGranted(forward), 750);
 
   assert.equal(
     reverse.chars[0].exp,
@@ -150,11 +151,11 @@ test('C2 承認順序不変（欠陥1の再現）: はっぱ exp4384、同日3�
 });
 
 // -----------------------------------------------------------------------------
-// C3: 欠陥1のあとに全部消すと基準(4384)に戻るはず
+// C3: 欠陥1のあとに全部消すとLv20の基準EXPに戻るはず
 // -----------------------------------------------------------------------------
 
-test('C3 削除で基準に戻る（欠陥1の再現）: はっぱ exp4384、21:00→15:00→09:00の順で承認したあと3件全部消すとexpが4384に戻る', () => {
-  const BASE_EXP = 4384;
+test('C3 削除で基準に戻る（欠陥1の再現）: はっぱLv20で逆順承認したあと3件全部消すと基準に戻る', () => {
+  const BASE_EXP = totalExpForLevel(20);
   const p = base('happa', BASE_EXP);
   p.settings.approvalEnabled = true;
   let cur = p;
@@ -172,7 +173,7 @@ test('C3 削除で基準に戻る（欠陥1の再現）: はっぱ exp4384、21:
   }
 
   assert.equal(cur.records.length, 0, '前提: 3件とも消えている');
-  assert.equal(cur.chars[0].exp, BASE_EXP, '記録を全部消したら基準(4384)に戻るはず（現状は欠陥1の後始末で4534になる）');
+  assert.equal(cur.chars[0].exp, BASE_EXP, '記録を全部消したらLv20の基準EXPに戻る');
 });
 
 // -----------------------------------------------------------------------------
@@ -180,11 +181,12 @@ test('C3 削除で基準に戻る（欠陥1の再現）: はっぱ exp4384、21:
 // だけではexpが変わらないはず
 // -----------------------------------------------------------------------------
 
-test('C4-A legacy同値なおし（欠陥2の再現）: はっぱ exp5534、v10由来のワン350先→ノー150後の日を、ノーを150→150で「なおす」だけならexpは変わらない', () => {
+test('C4-A legacy同値なおし（欠陥2の再現）: はっぱLv20基準のlegacy日を同値で直すと新ルールへ安定して再配分される', () => {
+  const BASE_EXP = totalExpForLevel(20);
   const p = {
     id: 'p1',
     activeCharId: 'happa',
-    chars: [{ charId: 'happa', nickname: null, exp: 5534, unlockedAt: NOW, evolvedStages: [] }],
+    chars: [{ charId: 'happa', nickname: null, exp: BASE_EXP + 1150, unlockedAt: NOW, evolvedStages: [] }],
     records: [
       {
         id: 'one1', date: '2026-07-28', mode: 'one', count: 350, createdAt: '2026-07-28T09:00:00.000Z',
@@ -203,19 +205,19 @@ test('C4-A legacy同値なおし（欠陥2の再現）: はっぱ exp5534、v10�
 
   // 手計算で確認済み: 新ルールでの正しい再配分は winner=no(900)。
   // before は「実際に配ったぶん」＝保存済みgrantedExp合計(700+450=1150)。
-  // after=900。diff=900-1150=-250。正しいexpは 5534-250=5284
-  // （現状は before を beforeRun+carry の混成で作るため、実測4834になる＝欠陥2）
-  assert.equal(player.chars[0].exp, 5284, '正しくは4384(基準)+900(引き直したgrantedExp合計)=5284');
+  // after=900。diff=900-1150=-250。正しいexpは BASE_EXP+900
+  assert.equal(player.chars[0].exp, BASE_EXP + 900);
   assert.equal(player.records.find((r) => r.id === 'no1').grantedExp, 900);
   assert.equal(player.records.find((r) => r.id === 'one1').grantedExp, 0);
-  assert.equal(result.expDelta, 5284 - 5534);
+  assert.equal(result.expDelta, -250);
 });
 
-test('C4-B legacy同値なおし（欠陥2の再現）: きらら exp60893、v10由来のワン200先(→Lv50)→ノー300後の日を、ワンを200→200で「なおす」だけならexpは変わらない', () => {
+test('C4-B legacy同値なおし（欠陥2の再現）: きららが記録中にLv50へ到達するlegacy日を同値で直すと安定する', () => {
+  const BASE_EXP = totalExpForLevel(50) - 200;
   const p = {
     id: 'p1',
     activeCharId: 'kirara',
-    chars: [{ charId: 'kirara', nickname: null, exp: 60893, unlockedAt: NOW, evolvedStages: [] }],
+    chars: [{ charId: 'kirara', nickname: null, exp: BASE_EXP + 1550, unlockedAt: NOW, evolvedStages: [] }],
     records: [
       {
         id: 'o1', date: '2026-07-28', mode: 'one', count: 200, createdAt: '2026-07-28T09:00:00.000Z',
@@ -233,23 +235,23 @@ test('C4-B legacy同値なおし（欠陥2の再現）: きらら exp60893、v10
   const { player, result } = editRecord(p, { recordId: 'o1', count: 200, now: NOW });
 
   // 手計算で確認済み: before(保存値合計)=200+1350=1550。after(引き直し, winner=no)=900。
-  // diff=900-1550=-650。正しいexpは60893-650=60243
-  // （現状は実測60693になる＝欠陥2。450上振れが残る）
-  assert.equal(player.chars[0].exp, 60243, '正しくは59343(基準)+900=60243');
+  // diff=900-1550=-650。正しいexpはBASE_EXP+900
+  assert.equal(player.chars[0].exp, BASE_EXP + 900);
   assert.equal(player.records.find((r) => r.id === 'n1').grantedExp, 900);
   assert.equal(player.records.find((r) => r.id === 'o1').grantedExp, 0);
-  assert.equal(result.expDelta, 60243 - 60893);
+  assert.equal(result.expDelta, -650);
 });
 
 // -----------------------------------------------------------------------------
 // C5: 欠陥2の再現。legacy日で「なおす」を繰り返してもgrantedExpが発振しないはず
 // -----------------------------------------------------------------------------
 
-test('C5 legacy同値なおしの繰り返し（欠陥2の再現）: きらら exp60893の日を、ワンを200→200で3回連続「なおす」と、n1のgrantedExpが900のまま安定するはず', () => {
+test('C5 legacy同値なおしの繰り返し（欠陥2の再現）: きららのLv50境界日を繰り返し直しても値が安定する', () => {
+  const BASE_EXP = totalExpForLevel(50) - 200;
   const p = {
     id: 'p1',
     activeCharId: 'kirara',
-    chars: [{ charId: 'kirara', nickname: null, exp: 60893, unlockedAt: NOW, evolvedStages: [] }],
+    chars: [{ charId: 'kirara', nickname: null, exp: BASE_EXP + 1550, unlockedAt: NOW, evolvedStages: [] }],
     records: [
       {
         id: 'o1', date: '2026-07-28', mode: 'one', count: 200, createdAt: '2026-07-28T09:00:00.000Z',
@@ -277,7 +279,7 @@ test('C5 legacy同値なおしの繰り返し（欠陥2の再現）: きらら e
   // 現状（欠陥2）は n1 が 900 と 1350 を無限に交互する（900,1350,900,1350）。
   // 正しくは1回目で900に収束したあとは何度なおしても900のまま変わらないはず
   assert.deepEqual(n1History, [900, 900, 900, 900], 'n1のgrantedExpは発振せず900で安定するはず（現状は900,1350,900,1350と発振する＝欠陥2）');
-  assert.deepEqual(expHistory, [60243, 60243, 60243, 60243], 'expも60243で安定するはず');
+  assert.deepEqual(expHistory, [BASE_EXP + 900, BASE_EXP + 900, BASE_EXP + 900, BASE_EXP + 900], 'expも同じ値で安定する');
 });
 
 // -----------------------------------------------------------------------------
@@ -329,16 +331,18 @@ function shuffle(arr, rand) {
 test('C7 ランダム検証: 同日複数件・両モード・Lv20/Lv50境界を含む状態で承認順序をランダムに並べても保存則が破れない', () => {
   const trials = 300;
   const charBases = [
-    ['happa', 4384], // Lv20境界（すくすく）
-    ['kirara', 59343], // Lv50境界（きらめき）
+    ['happa', totalExpForLevel(20)], // Lv20境界（すくすく）
+    ['kirara', totalExpForLevel(50)], // Lv50境界（きらめき）
   ];
   const violations = [];
+  const kiraraStartLevels = [];
 
   for (let seed = 1; seed <= trials; seed += 1) {
     const rand = mulberry32(seed * 2654435761);
     const [charId, baseExpRaw] = charBases[seed % charBases.length];
     const offset = Math.floor(rand() * 3000) - 1000; // 境界のまわりをばらつかせる
     const startExp = Math.max(0, baseExpRaw + offset);
+    if (charId === 'kirara') kiraraStartLevels.push(levelFromExp(startExp).level);
 
     const p = base(charId, startExp);
     p.settings.approvalEnabled = true;
@@ -377,6 +381,9 @@ test('C7 ランダム検証: 同日複数件・両モード・Lv20/Lv50境界を
       if (c.actual !== c.expected) violations.push({ seed, step: `edit ${targetId}`, ...c });
     }
   }
+
+  assert.ok(kiraraStartLevels.some((level) => level < 50), 'きららのLv50未満を試せている');
+  assert.ok(kiraraStartLevels.some((level) => level >= 50), 'きららのLv50以上を試せている');
 
   assert.equal(
     violations.length,
@@ -471,7 +478,10 @@ test('A2 ランダム検証（追加だけ・さかのぼりあり）: addRecord
   }
 
   const TRIALS = 3000;
-  const charBases = [['happa', 4384], ['kirara', 59343]]; // すくすく/きらめきの境界付近
+  const charBases = [
+    ['happa', totalExpForLevel(20)],
+    ['kirara', totalExpForLevel(50) - 200],
+  ]; // すくすく/きらめきの境界付近
   const violations = [];
 
   for (let seed = 1; seed <= TRIALS; seed += 1) {

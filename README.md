@@ -174,8 +174,17 @@ node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const l
 あわせて `CACHE_NAME` の版を必ず上げること。上げないと古いキャッシュが配られ、
 変更が端末に届かない。
 
-リポジトリは public。GitHub Pages を無料で使う条件のため。
-秘密情報は含まれておらず、子供の記録がここに入ることもない。
+### リポジトリの公開方針
+
+2026-07-31 に、無料の GitHub Pages と単純な本番運用を維持するため、当面 public のまま
+運用すると決定した。feature ブランチと Pull Request も公開される。秘密情報、認証情報、
+子供の記録を書き出した JSON、個人情報は commit / push しない。記録は端末の
+`localStorage` のみに保存する。
+
+商品化、バックエンド・外部 API の導入、非公開の設計資料、複数人開発のいずれかが始まる
+段階で、private な開発 repo への移行を再検討する。GitHub Free のまま現在の repo を private
+にすると本番 Pages が停止するため、先に移行方法か契約変更を決めること。判断の詳細と禁止事項は
+`HANDOFF.md` の「リポジトリの公開方針」を正本とする。
 
 ## キャラクターについて
 
@@ -228,7 +237,7 @@ node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const l
 7. **テストして push** — `node --test test/*.test.js` が全件通ればよい。
    `test/png-art.test.js` が 512x512・四隅の透明・透明率20〜90%・輪郭の灰色にじみを
    機械検査する。`test/invariants.test.js` は ASSETS の漏れと「**過去の版へ戻していないこと**」を見る。
-   **版を上げ忘れたことは機械では検出できない**（v14 のまま push してもテストは緑になる）ので手で確認する
+   **現在の版から上げ忘れたことは機械では検出できない**ので、変更のたびに手で確認する
 
 ### キャラ一覧と進捗
 

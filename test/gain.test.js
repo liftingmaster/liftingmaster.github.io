@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeGain } from '../js/core/gain.js';
+import { totalExpForLevel } from '../js/core/exp.js';
 
 const rec = (date, mode, count, seq = 0) => ({
   id: `${date}-${mode}-${count}-${seq}`, date, mode, count,
@@ -51,11 +52,11 @@ test('ワンバウンドは係数1', () => {
 });
 
 test('レベル条件の特性は charExp から導いたレベルで判定する', () => {
-  // はっぱ すくすく: Lv20以下で2倍。Lv20到達には累計4384EXP、Lv21には5043EXP
-  const atLv20 = computeGain({ records: [], record: rec('2026-07-01', 'one', 10), charId: 'happa', charExp: 4384 });
+  // はっぱ すくすく: Lv20以下で2倍
+  const atLv20 = computeGain({ records: [], record: rec('2026-07-01', 'one', 10), charId: 'happa', charExp: totalExpForLevel(20) });
   assert.equal(atLv20.exp, Math.round(10 * 1 * 2)); // 20
 
-  const atLv21 = computeGain({ records: [], record: rec('2026-07-01', 'one', 10), charId: 'happa', charExp: 5043 });
+  const atLv21 = computeGain({ records: [], record: rec('2026-07-01', 'one', 10), charId: 'happa', charExp: totalExpForLevel(21) });
   assert.equal(atLv21.exp, Math.round(10 * 1 * 1)); // 10
 });
 
