@@ -4,7 +4,7 @@ import {
   addRecord, approvePending, editRecord, deleteRecord, switchChar,
 } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
-import { totalExpForLevel } from '../js/core/exp.js';
+import { levelFromExp, totalExpForLevel } from '../js/core/exp.js';
 
 // =============================================================================
 // EXPの保存則（キャラのexp == baseExp + Σ そのキャラのgrantedExp）の回帰網。
@@ -332,15 +332,17 @@ test('C7 ランダム検証: 同日複数件・両モード・Lv20/Lv50境界を
   const trials = 300;
   const charBases = [
     ['happa', totalExpForLevel(20)], // Lv20境界（すくすく）
-    ['kirara', 59343], // Lv50境界（きらめき）
+    ['kirara', totalExpForLevel(50)], // Lv50境界（きらめき）
   ];
   const violations = [];
+  const kiraraStartLevels = [];
 
   for (let seed = 1; seed <= trials; seed += 1) {
     const rand = mulberry32(seed * 2654435761);
     const [charId, baseExpRaw] = charBases[seed % charBases.length];
     const offset = Math.floor(rand() * 3000) - 1000; // 境界のまわりをばらつかせる
     const startExp = Math.max(0, baseExpRaw + offset);
+    if (charId === 'kirara') kiraraStartLevels.push(levelFromExp(startExp).level);
 
     const p = base(charId, startExp);
     p.settings.approvalEnabled = true;
@@ -379,6 +381,9 @@ test('C7 ランダム検証: 同日複数件・両モード・Lv20/Lv50境界を
       if (c.actual !== c.expected) violations.push({ seed, step: `edit ${targetId}`, ...c });
     }
   }
+
+  assert.ok(kiraraStartLevels.some((level) => level < 50), 'きららのLv50未満を試せている');
+  assert.ok(kiraraStartLevels.some((level) => level >= 50), 'きららのLv50以上を試せている');
 
   assert.equal(
     violations.length,

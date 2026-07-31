@@ -228,7 +228,7 @@ node -e "const fs=require('fs');const sw=fs.readFileSync('sw.js','utf8');const l
 7. **テストして push** — `node --test test/*.test.js` が全件通ればよい。
    `test/png-art.test.js` が 512x512・四隅の透明・透明率20〜90%・輪郭の灰色にじみを
    機械検査する。`test/invariants.test.js` は ASSETS の漏れと「**過去の版へ戻していないこと**」を見る。
-   **版を上げ忘れたことは機械では検出できない**（v14 のまま push してもテストは緑になる）ので手で確認する
+   **現在の版から上げ忘れたことは機械では検出できない**ので、変更のたびに手で確認する
 
 ### キャラ一覧と進捗
 
