@@ -88,16 +88,16 @@ test('記録の修正機能の新設ファイル追加に合わせて CACHE_NAME
   );
 });
 
-// しずく・はっぱの画像差し替え（御三家の残り2体）で新設予定の6ファイル
-// （js/img/shizuku-0/1/2.png・js/img/happa-0/1/2.png）。
+// 画像化済みキャラで新設したファイル。
 // 上の「配信するファイルは全て sw.js の ASSETS に載っている」は js/img 配下も
 // 自動で拾うため、実は足し忘れればそちらでも落ちる。ただし ART に載っている
 // ものだけをひのこと同じ形で明示チェックしておくと、症状（ASSETS漏れ）と
 // 原因（このタスクで増やしたはずのファイル）が1本のテスト名で直結する。
-test('しずく・はっぱの画像差し替えで新設する js/img/ の6ファイルが存在し、ASSETSに載っている', () => {
+test('画像化済みキャラの js/img/ ファイルが存在し、ASSETSに載っている', () => {
   const expected = [
     'js/img/shizuku-0.png', 'js/img/shizuku-1.png', 'js/img/shizuku-2.png',
     'js/img/happa-0.png', 'js/img/happa-1.png', 'js/img/happa-2.png',
+    'js/img/pikari-0.png', 'js/img/pikari-1.png', 'js/img/pikari-2.png',
   ];
   for (const rel of expected) {
     let exists = true;
