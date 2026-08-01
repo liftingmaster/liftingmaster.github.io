@@ -13,6 +13,7 @@ export const ART = {
   hinoko: [0, 1, 2],
   shizuku: [0, 1, 2],
   happa: [0, 1, 2],
+  pikari: [0, 1, 2],
 };
 
 /** そのキャラ・その形態に画像が用意されているか */
