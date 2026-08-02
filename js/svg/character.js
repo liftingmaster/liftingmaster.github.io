@@ -166,9 +166,11 @@ export function characterSvg(charId, stage, options = {}) {
   if (hasArt(charId, stage)) {
     // 未解放キャラの本名を alt/aria-label に出さない（SVG版と同じルール）。
     // silhouette のときは img自体もグレーの影に変える（CSS の .char-silhouette）。
+    // draggable=false とCSSの操作抑止は、長押しプレビューで元のカラー画像が
+    // 見えてしまうのを防ぐため。通常表示の画像は見えても問題ないので対象外。
     const label = silhouette ? 'みかいほうの キャラクター' : char.name;
-    const cls = silhouette ? ' class="char-silhouette"' : '';
-    return `<img src="${artPath(charId, stage)}" width="${size}" height="${size}" alt="${label}" aria-label="${label}"${cls} data-char-id="${charId}" data-stage="${stage}" data-size="${size}" data-silhouette="${silhouette}">`;
+    const hiddenAttrs = silhouette ? ' class="char-silhouette" draggable="false"' : '';
+    return `<img src="${artPath(charId, stage)}" width="${size}" height="${size}" alt="${label}" aria-label="${label}"${hiddenAttrs} data-char-id="${charId}" data-stage="${stage}" data-size="${size}" data-silhouette="${silhouette}">`;
   }
 
   return drawSvg(char, stage, { size, silhouette });
