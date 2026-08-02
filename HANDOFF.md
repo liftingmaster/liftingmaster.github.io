@@ -23,8 +23,8 @@
 2. **コードを写している箇所は特に疑う。**そのまま貼らず、実物を開いてコピーする
 3. 食い違いを見つけたら、**コードを正とし、この文書を直す**
 
-一方で **`node --test test/*.test.js` の既存420件は信頼できます。**本書の安全化作業で10件を追加し、
-現在は432件です。文書と違って機械が守っています。
+一方で **`node --test test/*.test.js` のテストは信頼できます。**
+現在は436件です。文書と違って機械が守っています。
 迷ったらテストを読むのが最短です。
 
 ---
@@ -52,7 +52,7 @@ node --test test/*.test.js
 
 **重要**: Node 24 では `node --test test/`（ディレクトリ指定）は `MODULE_NOT_FOUND` になるため、**glob 展開必須**。
 
-現在 **432テスト全通過** / `CACHE_NAME = liftingmaster-v14` / `SCHEMA_VERSION = 2`
+現在 **436テスト全通過** / `CACHE_NAME = liftingmaster-v17` / `SCHEMA_VERSION = 2`
 
 ### ローカル配信（開発時）
 ```bash
@@ -77,8 +77,8 @@ PWA アイコンを生成。
 ## 現在の状態
 
 - **最新コミット**: 固定値は書かない。`git log -1 --oneline` で実物を確認
-- **デプロイ版**: `liftingmaster-v16`
-- **テスト**: 432件全通過
+- **デプロイ版**: `liftingmaster-v17`
+- **テスト**: 436件全通過
 - **本番稼働**: 安部さんのお子さんが毎日使用中
 
 **キャラクター実装の進捗**:
@@ -185,7 +185,7 @@ expToNext(level) = Math.max(1, Math.round(0.3 * level ** 1.8))
 - 保存済みEXPの移行・縮小はしない。既存EXPを新曲線で読み直すため、既存キャラのレベルは上がる
 - EXP獲得、`grantedExp`、1日1記録ぶんの上限ルールは変更していない
 - ただしレベル依存特性は新しいレベルで判定されるため、既存プレイヤーでは特性のON/OFFが即時に変わり、今後の獲得EXPが変わる場合がある
-- 配信キャッシュは `liftingmaster-v16`
+- 配信キャッシュは `liftingmaster-v17`
 
 ### D. 進化ゲート（控えのキャラは進化しない）
 
@@ -213,7 +213,7 @@ export function displayStageOf(player, charId) {
 
 `stageOf`（潜在段階）と混ぜてはいけません。混ぜると控えのキャラの絵が勝手に進化します。
 
-### E. ぴかり は「第1進化（だい1しんか）を実現したら解放」
+### E. 進化実績による仲間の解放
 
 2026-07-30 に `unlockLevel` から `unlockOnEvolvedStage: 1` に変更。
 
@@ -222,27 +222,22 @@ export function displayStageOf(player, charId) {
 pikari: {
   unlockLevel: null,           // Lv30 到達ではなく
   unlockOnEvolvedStage: 1,     // 誰かが stage:1 を実現したら
+  unlockOnEvolvedCount: 1,
   ...
 }
 ```
 
-**判定は「実現した」進化で見ます**（`stageOf` という潜在段階ではない）。控えのキャラが条件を満たしただけでは解放されません。
+2026-08-02 に、がんろを「第2進化が1匹」、かげろを「第2進化が2匹」で解放する条件へ変更。もくもはLv30、きららはLv40、こおるはLv50へ変更しました。
+
+**判定は「実現した」進化で見ます**（`stageOf` という潜在段階ではない）。第2進化の条件を満たしただけでは数えず、`evolvedStages` に実現済みとして記録されたキャラを1匹ずつ数えます。
 
 **呼び出し側の必須変更**:
 ```js
-// js/core/unlock.js:62
-export function pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver = 0) {
-  // …
-  if (c.unlockOnEvolvedStage && maxEvolvedStageEver >= c.unlockOnEvolvedStage) {
-    // 進化由来のエントリを追加
-  }
-}
+const progress = evolutionUnlockProgress(player);
+pendingUnlocks(maxLevelEver(player), ownedIds, progress);
 ```
 
-`pendingUnlocks()` は **第3引数 `maxEvolvedStageEver`** を受け取ります。これは「なかまの誰かが実現した進化段階の最大値」。**`player` のメソッドではなくモジュール関数**で、
-`import { maxEvolvedStageEver } from '../core/player.js'` して `maxEvolvedStageEver(player)` と呼びます
-（`js/core/player.js:50`。呼び出し例は `js/views/home.js:67` と `js/views/party.js:24`）。
-`player.maxEvolvedStageEver()` と書くと `TypeError` で `render()` ごと落ち、画面が真っ白になります。渡し忘れると、ぴかりが解放されても「ホームにカード出ない」などの矛盾が起きます。`test/invariants.test.js` に機械検査あり。
+`pendingUnlocks()` は **第3引数に `evolutionUnlockProgress(player)` の戻り値**を受け取ります。戻り値は最大進化段階と段階ごとの実現キャラ数を持ちます。渡し忘れると進化由来の解放案内が画面に出ません。`test/invariants.test.js` に機械検査があります。
 
 ---
 
@@ -572,7 +567,7 @@ Pull Request と必須CIはありますが、マージすると、お子さん�
 ブランチ保護    PR必須・管理者にも適用・node-test必須（strict）
                 force push禁止・branch deletion禁止・承認人数0
 CI / Actions    test workflow（必須check名: node-test）
-                → Pull Request と main で全432テストを実行。PRでは CACHE_NAME の版上げも検査
+                → Pull Request と main で全436テストを実行。PRでは CACHE_NAME の版上げも検査
 Pages の設定    source: main の / （ルート）、build_type: legacy、HTTPS 強制、status: built
 公開URL         https://liftingmaster.github.io/
 gh CLI          ryoichiabe-svg で認証済み（keyring）。この repo に admin 権限あり

@@ -21,7 +21,10 @@ import { escapeHtml } from './playerSelect.js';
  */
 function unlockText(char) {
   if (typeof char.unlockOnEvolvedStage === 'number') {
-    return `なかまの だれかが だい${char.unlockOnEvolvedStage}しんか すると なかまに なる`;
+    const count = char.unlockOnEvolvedCount || 1;
+    return count > 1
+      ? `なかまが ${count}ひき だい${char.unlockOnEvolvedStage}しんか すると なかまに なる`
+      : `なかまの だれかが だい${char.unlockOnEvolvedStage}しんか すると なかまに なる`;
   }
   if (char.unlockLevel === 0) {
     return `Lv${UNLOCK_LEVELS[0]} か Lv${UNLOCK_LEVELS[1]} で なかまに なる`;

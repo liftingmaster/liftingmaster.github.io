@@ -150,11 +150,11 @@ test('js/core は DOM・localStorage・時計に触れない（純粋関数だ�
 //
 // 版を上げたら、この下限もいっしょに上げること（上げ忘れても緑にはならない。
 // 下限より小さい版に戻したときだけ落ちる）。
-const CACHE_VERSION_FLOOR = 15;
+const CACHE_VERSION_FLOOR = 17;
 
 // =============================================================================
-// 2026-07-30 追加: pendingUnlocks(maxLevelEver, ownedIds, maxEvolvedStageEver) の
-// 第3引数（maxEvolvedStageEver）を渡し忘れる同じ抜けが js/ 内で3回起きている
+// 2026-07-30 追加: pendingUnlocks の進化実績を渡す第3引数を
+// 渡し忘れる同じ抜けが js/ 内で3回起きている
 // （js/views/home.js:64 が最新の例。adversarial-reviewer 指摘・欠陥1）。
 // 人間の目でのレビューに頼ると次も見逃されるので、呼び出し箇所の引数の数を
 // ソースから機械的に数えて検査する（実装は書き換えない・検査だけ置く）。
@@ -201,7 +201,7 @@ function listJsFiles(dir) {
   return out;
 }
 
-test('H3 js/ 内の pendingUnlocks 呼び出しは、すべて第3引数(maxEvolvedStageEver)を渡している', () => {
+test('H3 js/ 内の pendingUnlocks 呼び出しは、すべて第3引数(evolutionUnlockProgress)を渡している', () => {
   const jsDir = join(ROOT, 'js');
   const violations = [];
 
@@ -235,9 +235,9 @@ test('H3 js/ 内の pendingUnlocks 呼び出しは、すべて第3引数(maxEvol
 
   assert.deepEqual(
     violations, [],
-    `pendingUnlocks の呼び出しで第3引数(maxEvolvedStageEver)が抜けている:\n${violations.join('\n')}\n`
-    + 'ぴかりの解放条件は maxEvolvedStageEver 経由でしか判定できないため、渡し忘れると'
-    + 'その画面だけ「あたらしい なかまが まってるよ！」が永久に出ない',
+    `pendingUnlocks の呼び出しで第3引数(evolutionUnlockProgress)が抜けている:\n${violations.join('\n')}\n`
+    + '進化由来の解放条件は evolutionUnlockProgress 経由で判定するため、渡し忘れると'
+    + 'その画面だけ解放案内が永久に出ない',
   );
 });
 

@@ -1,6 +1,6 @@
 import { renderNav } from '../app.js';
 import {
-  playerView, progressOf, maxLevelEver, displayStageOf, maxEvolvedStageEver,
+  playerView, progressOf, maxLevelEver, displayStageOf, evolutionUnlockProgress,
 } from '../core/player.js';
 import { pendingUnlocks } from '../core/unlock.js';
 import { characterSvg } from '../svg/character.js';
@@ -64,7 +64,7 @@ function render(root, app) {
   const unlocks = pendingUnlocks(
     maxLevelEver(player),
     player.chars.map((c) => c.charId),
-    maxEvolvedStageEver(player),
+    evolutionUnlockProgress(player),
   );
   if (unlocks.length > 0) {
     const note = document.createElement('div');

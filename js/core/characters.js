@@ -45,9 +45,10 @@ export const CHARACTERS = [
     dexText: 'いっしゅんの すばやさは だれにも まけない。ボールを おとさない しゅんぱつりょくを もつ。',
     // 2026-07-30: 「レベルの節目」ではなく「なかまの誰かがだい1しんか(stage 1)を
     // 実現したら解放」に変わった（安部さんの依頼）。unlockLevel は null にし、
-    // 判定は unlock.js の pendingUnlocks が maxEvolvedStageEver 経由で行う。
+    // 判定は unlock.js の pendingUnlocks が evolutionUnlockProgress 経由で行う。
     unlockLevel: null,
     unlockOnEvolvedStage: 1,
+    unlockOnEvolvedCount: 1,
     ability: { id: 'inazuma', name: 'いなずま', text: 'ノーバウンドの EXPが 1.5ばい' },
     evolutions: [
       { stage: 1, level: 12, noCount: 20, oneCount: 70, streak: 3 },
@@ -57,7 +58,7 @@ export const CHARACTERS = [
   {
     id: 'mokumo', no: 5, name: 'もくも', type: 'そら', color: '#7fd4e8',
     dexText: 'くもに のって ふわふわ とぶ。ボールが はずむ リズムに あわせるのが じょうず。',
-    unlockLevel: 40,
+    unlockLevel: 30,
     ability: { id: 'fuwafuwa', name: 'ふわふわ', text: 'ワンバウンドの EXPが 2ばい' },
     evolutions: [
       { stage: 1, level: 15, noCount: 18, oneCount: 30, streak: 5 },
@@ -67,7 +68,7 @@ export const CHARACTERS = [
   {
     id: 'kirara', no: 6, name: 'きらら', type: 'ほし', color: '#b06bff',
     dexText: 'よぞらの ほしの かけらから うまれた。おおきく そだつほど つよく かがやきだす。',
-    unlockLevel: 50,
+    unlockLevel: 40,
     ability: { id: 'kirameki', name: 'きらめき', text: 'レベル50 いじょうの あいだ EXPが 1.5ばい' },
     evolutions: [
       { stage: 1, level: 25, noCount: 15, oneCount: 50, streak: 5 },
@@ -77,7 +78,9 @@ export const CHARACTERS = [
   {
     id: 'ganro', no: 7, name: 'がんろ', type: 'いわ', color: '#a0785a',
     dexText: 'おもい いわを せおって いても へこたれない。まいにち つづける ちからは いちばん。',
-    unlockLevel: 65,
+    unlockLevel: null,
+    unlockOnEvolvedStage: 2,
+    unlockOnEvolvedCount: 1,
     ability: { id: 'dosshiri', name: 'どっしり', text: '10にち いじょう れんぞくで きろく している あいだ EXPが 1.5ばい' },
     evolutions: [
       { stage: 1, level: 10, noCount: 10, oneCount: 35, streak: 20 },
@@ -87,7 +90,7 @@ export const CHARACTERS = [
   {
     id: 'kooru', no: 8, name: 'こおる', type: 'こおり', color: '#6ad9d0',
     dexText: 'こおりの けっしょうを まとう。しずかに あいてを みつめ ここぞという ときに ちからを だす。',
-    unlockLevel: 80,
+    unlockLevel: 50,
     ability: { id: 'reisei', name: 'れいせい', text: 'ノーバウンドで 20かい いじょう だした ときの EXPが 2ばい' },
     evolutions: [
       { stage: 1, level: 20, noCount: 25, oneCount: 85, streak: 7 },
@@ -96,8 +99,10 @@ export const CHARACTERS = [
   },
   {
     id: 'kagero', no: 9, name: 'かげろ', type: 'やみ', color: '#6b5b95',
-    dexText: 'レベル100 に とうたつした ものの まえにだけ すがたを あらわす でんせつの そんざい。',
-    unlockLevel: 100,
+    dexText: 'だい2しんかを なしとげた なかまが 2ひき そろうと すがたを あらわす でんせつの そんざい。',
+    unlockLevel: null,
+    unlockOnEvolvedStage: 2,
+    unlockOnEvolvedCount: 2,
     ability: { id: 'yaminochikara', name: 'やみのちから', text: 'いつでも EXPが 1.3ばい' },
     evolutions: [
       { stage: 1, level: 30, noCount: 30, oneCount: 100, streak: 14 },
