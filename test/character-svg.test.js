@@ -239,6 +239,7 @@ test('A8: しずく・はっぱ・ぴかりの <img> は silhouette のとき本
       const html = characterSvg(c.id, stage, { silhouette: true });
       assert.ok(!html.includes(c.name), `${c.id} stage${stage}: silhouette なのに本名が出た`);
       assert.ok(html.includes('class="char-silhouette"'), `${c.id} stage${stage}: シルエット用クラスが付いていない`);
+      assert.ok(html.includes('draggable="false"'), `${c.id} stage${stage}: 長押し・ドラッグ対策が付いていない`);
       assert.ok(html.includes('alt="みかいほうの キャラクター"'), `${c.id} stage${stage}: altが未解放向けでない`);
     }
   }
@@ -268,6 +269,7 @@ test('ひのこの <img> は silhouette のとき本名を出さず、灰色シ�
     const html = characterSvg('hinoko', stage, { silhouette: true });
     assert.ok(!html.includes('ひのこ'), `stage${stage}: silhouette なのに本名が出た`);
     assert.ok(html.includes('class="char-silhouette"'), `stage${stage}: シルエット用クラスが付いていない`);
+    assert.ok(html.includes('draggable="false"'), `stage${stage}: 長押し・ドラッグ対策が付いていない`);
     assert.ok(html.includes('alt="みかいほうの キャラクター"'), `stage${stage}: altが未解放向けでない`);
   }
 });

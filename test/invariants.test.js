@@ -150,7 +150,7 @@ test('js/core は DOM・localStorage・時計に触れない（純粋関数だ�
 //
 // 版を上げたら、この下限もいっしょに上げること（上げ忘れても緑にはならない。
 // 下限より小さい版に戻したときだけ落ちる）。
-const CACHE_VERSION_FLOOR = 17;
+const CACHE_VERSION_FLOOR = 18;
 
 // =============================================================================
 // 2026-07-30 追加: pendingUnlocks の進化実績を渡す第3引数を
@@ -251,4 +251,13 @@ test('sw.js の CACHE_NAME は liftingmaster-v<数字> の形で、過去に使�
     `CACHE_NAME が v${version} になっている。過去に使った版（v${CACHE_VERSION_FLOOR} 未満）へ戻すと、`
     + 'その名前でキャッシュ済みの端末に古いファイルが残り続ける',
   );
+});
+
+test('画像シルエットは長押しプレビューやドラッグの対象にならない', () => {
+  const css = readFileSync(join(ROOT, 'css', 'style.css'), 'utf8');
+  const block = css.match(/\.char-silhouette\s*\{([^}]*)\}/);
+  assert.ok(block, '.char-silhouette のCSSが無い');
+  assert.match(block[1], /-webkit-touch-callout\s*:\s*none/);
+  assert.match(block[1], /-webkit-user-drag\s*:\s*none/);
+  assert.match(block[1], /pointer-events\s*:\s*none/);
 });

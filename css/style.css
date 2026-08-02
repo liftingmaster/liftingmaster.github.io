@@ -111,8 +111,17 @@ h2 { font-size: 21px; }
 
 /* 未解放キャラの画像を、単色の影として見せる。
    brightness(0) で真っ黒にしてから invert で灰色に持ち上げる。
-   透過部分はそのまま残るので、キャラの形だけが出る */
-.char-silhouette { filter: brightness(0) invert(0.73); }
+   透過部分はそのまま残るので、キャラの形だけが出る。
+   長押しやドラッグの対象から外し、CSSが適用されない画像プレビューで
+   次の進化形態のカラー画像が見えてしまうことも防ぐ */
+.char-silhouette {
+  filter: brightness(0) invert(0.73);
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
 
 /* きろく画面の日付選択 */
 .date-input {

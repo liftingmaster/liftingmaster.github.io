@@ -24,7 +24,7 @@
 3. 食い違いを見つけたら、**コードを正とし、この文書を直す**
 
 一方で **`node --test test/*.test.js` のテストは信頼できます。**
-現在は436件です。文書と違って機械が守っています。
+現在は437件です。文書と違って機械が守っています。
 迷ったらテストを読むのが最短です。
 
 ---
@@ -52,7 +52,7 @@ node --test test/*.test.js
 
 **重要**: Node 24 では `node --test test/`（ディレクトリ指定）は `MODULE_NOT_FOUND` になるため、**glob 展開必須**。
 
-現在 **436テスト全通過** / `CACHE_NAME = liftingmaster-v17` / `SCHEMA_VERSION = 2`
+現在 **437テスト全通過** / `CACHE_NAME = liftingmaster-v18` / `SCHEMA_VERSION = 2`
 
 ### ローカル配信（開発時）
 ```bash
@@ -77,8 +77,8 @@ PWA アイコンを生成。
 ## 現在の状態
 
 - **最新コミット**: 固定値は書かない。`git log -1 --oneline` で実物を確認
-- **デプロイ版**: `liftingmaster-v17`
-- **テスト**: 436件全通過
+- **デプロイ版**: `liftingmaster-v18`
+- **テスト**: 437件全通過
 - **本番稼働**: 安部さんのお子さんが毎日使用中
 
 **キャラクター実装の進捗**:
@@ -185,7 +185,7 @@ expToNext(level) = Math.max(1, Math.round(0.3 * level ** 1.8))
 - 保存済みEXPの移行・縮小はしない。既存EXPを新曲線で読み直すため、既存キャラのレベルは上がる
 - EXP獲得、`grantedExp`、1日1記録ぶんの上限ルールは変更していない
 - ただしレベル依存特性は新しいレベルで判定されるため、既存プレイヤーでは特性のON/OFFが即時に変わり、今後の獲得EXPが変わる場合がある
-- 配信キャッシュは `liftingmaster-v17`
+- 配信キャッシュは `liftingmaster-v18`
 
 ### D. 進化ゲート（控えのキャラは進化しない）
 
@@ -567,7 +567,7 @@ Pull Request と必須CIはありますが、マージすると、お子さん�
 ブランチ保護    PR必須・管理者にも適用・node-test必須（strict）
                 force push禁止・branch deletion禁止・承認人数0
 CI / Actions    test workflow（必須check名: node-test）
-                → Pull Request と main で全436テストを実行。PRでは CACHE_NAME の版上げも検査
+                → Pull Request と main で全437テストを実行。PRでは CACHE_NAME の版上げも検査
 Pages の設定    source: main の / （ルート）、build_type: legacy、HTTPS 強制、status: built
 公開URL         https://liftingmaster.github.io/
 gh CLI          ryoichiabe-svg で認証済み（keyring）。この repo に admin 権限あり
