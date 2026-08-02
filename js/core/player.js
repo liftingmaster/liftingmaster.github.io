@@ -48,10 +48,25 @@ function clampedStages(evolvedStages) {
  * evolvedStages が無い/空のキャラは無視するので、誰も進化していなければ 0。
  */
 export function maxEvolvedStageEver(player) {
-  return player.chars.reduce((max, c) => {
+  return evolutionUnlockProgress(player).maxStage;
+}
+
+/**
+ * 進化由来の仲間解放に使う実績。
+ * countByStage[n] は「第n進化以上を実現したキャラ」の数。
+ * 0→2 の一気進化でも第1・第2進化の両方へ1体として数える。
+ */
+export function evolutionUnlockProgress(player) {
+  const countByStage = { 1: 0, 2: 0 };
+  let maxStage = 0;
+  for (const c of player.chars) {
     const shown = clampedStages(c.evolvedStages);
-    return Math.max(max, Math.min(2, Math.max(0, ...shown)));
-  }, 0);
+    const stage = Math.min(2, Math.max(0, ...shown));
+    maxStage = Math.max(maxStage, stage);
+    if (stage >= 1) countByStage[1] += 1;
+    if (stage >= 2) countByStage[2] += 1;
+  }
+  return { maxStage, countByStage };
 }
 
 /** 進化判定に使う実績（プレイヤー本人のもの） */
@@ -254,7 +269,7 @@ function commitRecord(player, record) {
   }
 
   const ownedIds = next.chars.map((c) => c.charId);
-  const unlocks = pendingUnlocks(maxLevelEver(next), ownedIds, maxEvolvedStageEver(next));
+  const unlocks = pendingUnlocks(maxLevelEver(next), ownedIds, evolutionUnlockProgress(next));
 
   return {
     player: next,
@@ -292,7 +307,7 @@ export function addRecord(player, { id, count, mode, date, now }) {
         levelBefore: level,
         levelAfter: level,
         evolvedTo: null,
-        unlocks: pendingUnlocks(maxLevelEver(next), ownedIds, maxEvolvedStageEver(next)),
+        unlocks: pendingUnlocks(maxLevelEver(next), ownedIds, evolutionUnlockProgress(next)),
         // 承認待ちの時点ではEXPは動かないので、日の勝敗もまだ決まらない
         dayWinnerMode: null,
         charChanges: [],

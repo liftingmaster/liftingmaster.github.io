@@ -19,12 +19,20 @@ test('御三家3体は unlockLevel 0', () => {
   }
 });
 
-test('解放レベルは設計どおり', () => {
-  assert.equal(getCharacter('mokumo').unlockLevel, 40);
-  assert.equal(getCharacter('kirara').unlockLevel, 50);
-  assert.equal(getCharacter('ganro').unlockLevel, 65);
-  assert.equal(getCharacter('kooru').unlockLevel, 80);
-  assert.equal(getCharacter('kagero').unlockLevel, 100);
+test('No.5〜9の解放条件は設計どおり', () => {
+  assert.equal(getCharacter('mokumo').unlockLevel, 30);
+  assert.equal(getCharacter('kirara').unlockLevel, 40);
+  assert.equal(getCharacter('kooru').unlockLevel, 50);
+
+  const ganro = getCharacter('ganro');
+  assert.equal(ganro.unlockLevel, null);
+  assert.equal(ganro.unlockOnEvolvedStage, 2);
+  assert.equal(ganro.unlockOnEvolvedCount, 1);
+
+  const kagero = getCharacter('kagero');
+  assert.equal(kagero.unlockLevel, null);
+  assert.equal(kagero.unlockOnEvolvedStage, 2);
+  assert.equal(kagero.unlockOnEvolvedCount, 2);
 });
 
 // =============================================================================
@@ -39,6 +47,7 @@ test('ぴかりはレベルの節目ではなく、だい1しんか(stage:1)の�
   const pikari = getCharacter('pikari');
   assert.equal(pikari.unlockLevel, null, 'もうレベルでは解放されない');
   assert.equal(pikari.unlockOnEvolvedStage, 1, 'なかまの誰かがだい1しんか(stage 1)を実現すると解放される');
+  assert.equal(pikari.unlockOnEvolvedCount, 1);
 });
 
 test('全キャラが進化を2段階持ち、第2進化は oneCount が null', () => {

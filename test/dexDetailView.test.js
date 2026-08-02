@@ -94,16 +94,27 @@ test('D3-a 未所持の御三家（unlockLevel===0, しずく）は従来どお�
   );
 });
 
-test('D3-b 未所持の数値レベル解放キャラ（もくも, unlockLevel:40）は従来どおり「Lv 40 で なかまに なる」', async () => {
+test('D3-b 未所持のもくもは「Lv 30 で なかまに なる」', async () => {
   const player = await basePlayer();
   const root = await renderDexDetail(player, 'mokumo');
 
   assert.ok(
-    root.textContent.includes('Lv 40 で なかまに なる'),
+    root.textContent.includes('Lv 30 で なかまに なる'),
     `数値レベル解放の従来表示が壊れている。実際のテキスト: ${root.textContent}`,
   );
   assert.ok(
     root.textContent.includes('いまの さいこう レベル'),
     'もくも（レベル由来）で「いまの さいこう レベル」の表示が消えてはいけない',
   );
+});
+
+test('D4 がんろは「だい2しんか」、かげろは「2ひき だい2しんか」と表示される', async () => {
+  const player = await basePlayer();
+  const ganro = await renderDexDetail(player, 'ganro');
+  const kagero = await renderDexDetail(player, 'kagero');
+
+  assert.ok(ganro.textContent.includes('なかまの だれかが だい2しんか すると なかまに なる'));
+  assert.ok(kagero.textContent.includes('なかまが 2ひき だい2しんか すると なかまに なる'));
+  assert.ok(!ganro.textContent.includes('いまの さいこう レベル'));
+  assert.ok(!kagero.textContent.includes('いまの さいこう レベル'));
 });

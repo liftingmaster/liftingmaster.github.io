@@ -4,7 +4,7 @@ import { installDom } from './helpers/minidom.js';
 
 // =============================================================================
 // 2026-07-30 adversarial-reviewer 指摘（欠陥1・高）: js/views/home.js:64 が
-// pendingUnlocks の第3引数（maxEvolvedStageEver）を渡していない。
+// pendingUnlocks の第3引数（evolutionUnlockProgress）を渡していない。
 //
 // ぴかり(No.4) の解放条件が「Lv30到達」から「なかまの誰かが だい1しんか
 // (stage:1) を実現した」に変わったが（js/core/characters.js・js/core/unlock.js）、
@@ -36,7 +36,7 @@ function makeFakeApp(player) {
 /**
  * ぴかり以外の8体すべてを所持させたプレイヤーを作る。
  *
- * こうしておくと、レベルの節目（Lv10/20/40/50/65/80/100）の解放候補は
+ * こうしておくと、レベルの節目（Lv10/20/30/40/50）の解放候補は
  * 「もう持っているので該当なし」になるため、maxLevelEver をどれだけ上げても
  * レベル由来の解放カードが紛れ込まない。これで「進化由来の解放だけ」を
  * 純粋に検証できる（H2 で「レベルがいくら高くても」を確かめるのに必須）。
@@ -72,7 +72,7 @@ test('H1 だい1しんかを実現していれば、ホームに「あたらし�
   assert.ok(
     root.textContent.includes('あたらしい なかまが まってるよ'),
     'だい1しんか(evolvedStages=[1])を実現しているのに、ホームに解放カードが出ていない'
-    + '（js/views/home.js の pendingUnlocks 呼び出しに maxEvolvedStageEver が渡っていない可能性）',
+    + '（js/views/home.js の pendingUnlocks 呼び出しに evolutionUnlockProgress が渡っていない可能性）',
   );
 });
 

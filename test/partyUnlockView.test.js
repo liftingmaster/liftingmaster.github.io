@@ -68,7 +68,7 @@ test('P9 renderUnlock は進化由来（level:null）の解放エントリを渡
   assert.ok(
     root.textContent.includes('ぴかり'),
     '前提: だい1しんかを実現済みなのに、ぴかりの解放カードが描画されていない'
-    + '（party.js 自身の pendingUnlocks 呼び出しが maxEvolvedStageEver を渡していない可能性）',
+    + '（party.js 自身の pendingUnlocks 呼び出しが evolutionUnlockProgress を渡していない可能性）',
   );
 
   assert.ok(

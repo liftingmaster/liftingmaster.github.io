@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   activeCharEntry, maxLevelEver, playerView, stageOf, progressOf, displayName,
   addRecord, approvePending, rejectPending, switchChar, claimUnlock, setNickname,
-  maxEvolvedStageEver,
+  maxEvolvedStageEver, evolutionUnlockProgress,
 } from '../js/core/player.js';
 import { createPlayer } from '../js/storage.js';
 import { totalExpForLevel } from '../js/core/exp.js';
@@ -96,12 +96,12 @@ test('addRecord: 承認ONでも既にある解放待ちを見逃さない', () =
   p.chars[0].exp = totalExpForLevel(10); // すでにLv10到達済み・未受取の解放がある
   p.settings.approvalEnabled = true;
 
-  // 2026-07-30（P10-b）: pendingUnlocks は maxEvolvedStageEver を渡す第3引数が
+  // pendingUnlocks は evolutionUnlockProgress を渡す第3引数が
   // ある。ここを省略すると、期待値(expected)と実装呼び出し(addRecord内)が
   // 「両辺そろって同じ間違いをする」ため、addRecord 側が将来この第3引数を
   // 落としても本テストは気づけない（テストの穴）。明示的に渡して両辺を揃える
   const expected = pendingUnlocks(
-    maxLevelEver(p), p.chars.map((c) => c.charId), maxEvolvedStageEver(p),
+    maxLevelEver(p), p.chars.map((c) => c.charId), evolutionUnlockProgress(p),
   );
   assert.ok(expected.length > 0, 'テストの前提: 解放待ちがあること');
 
@@ -498,6 +498,21 @@ test('E1 maxEvolvedStageEver は非数値混入でも壊れず、0〜2に丸め�
     assert.ok(value >= 0 && value <= 2, `evolvedStages=${JSON.stringify(stages)} は 0〜2 の範囲であるべき（実際: ${value}）`);
     assert.equal(value, expected, `evolvedStages=${JSON.stringify(stages)}`);
   }
+});
+
+test('E1-b evolutionUnlockProgress は第1・第2進化を実現したキャラ数を数える', () => {
+  const player = {
+    chars: [
+      { charId: 'hinoko', exp: 0, evolvedStages: [1] },
+      { charId: 'shizuku', exp: 0, evolvedStages: [1, 2] },
+      { charId: 'happa', exp: 0, evolvedStages: [2] },
+      { charId: 'pikari', exp: 0, evolvedStages: ['2', true] },
+    ],
+  };
+  assert.deepEqual(evolutionUnlockProgress(player), {
+    maxStage: 2,
+    countByStage: { 1: 3, 2: 2 },
+  });
 });
 
 test('E2 再現: 手編集バックアップ由来の非数値混入 evolvedStages（[1,"だい1しんか"]）でも、ぴかりの解放が正しく判定される（欠陥3の再現）', () => {
