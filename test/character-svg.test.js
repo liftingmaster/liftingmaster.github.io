@@ -5,6 +5,15 @@ import { characterSvg, svgFallback } from '../js/svg/character.js';
 import { hasArt, artPath } from '../js/svg/artManifest.js';
 import { svgExtents } from './helpers/svg-extents.js';
 
+const IMAGE_CHAR_IDS = ['shizuku', 'happa', 'pikari', 'mokumo'];
+const IMAGE_CHARACTERS = [
+  { id: 'shizuku', name: 'しずく' },
+  { id: 'happa', name: 'はっぱ' },
+  { id: 'pikari', name: 'ぴかり' },
+  { id: 'mokumo', name: 'もくも' },
+];
+const SVG_REPRESENTATIVE = 'kirara';
+
 // Task 28: ひのこは画像（<img>）で描かれるようになったため、SVG生成コードそのものを
 // 見るテスト（この1件と、下の「形態が進むほど大きくなる」）は代表キャラを
 // shizuku（画像を持たない）に差し替えた。
@@ -12,14 +21,14 @@ import { svgExtents } from './helpers/svg-extents.js';
 // 本タスク（しずく・はっぱの画像差し替え）で shizuku 自身が画像を持つように
 // なったため、代表キャラをさらに pikari（当時は画像を持たない）に
 // 差し替える。テストの狙い（SVG文字列が正しく組み立つこと）は変わっていない。
-// ぴかりも画像化されたため、現在は mokumo を代表キャラにする。
+// ぴかり・もくもも画像化されたため、現在は kirara を代表キャラにする。
 // ART に新しいキャラが増えるたびにここを差し替えるのは本質的ではないが、
 // 「画像を持たないキャラで代表させる」という設計そのものが ART の変化に弱い
 // ことは変えられない。せめて hasArt() で自動検知して分かりやすく落とす。
 
 test('SVG文字列を返す', () => {
-  assert.ok(!hasArt('mokumo', 0), 'mokumo が画像化された場合、この代表キャラを別のIDに差し替える必要がある');
-  const svg = characterSvg('mokumo', 0);
+  assert.ok(!hasArt(SVG_REPRESENTATIVE, 0), `${SVG_REPRESENTATIVE} が画像化された場合、この代表キャラを別のIDに差し替える必要がある`);
+  const svg = characterSvg(SVG_REPRESENTATIVE, 0);
   assert.ok(svg.startsWith('<svg'));
   assert.ok(svg.includes('viewBox="0 0 100 100"'));
   assert.ok(svg.trim().endsWith('</svg>'));
@@ -171,17 +180,17 @@ test('形態が進むほど大きくなる（足の裏・体の幅・足の長�
   // 体の幅（bodyRx*2）はいちばん外側の rect（足）ではなく、体の ellipse の幅で見る。
   // 元は hinoko で見ていたが、Task 28 で hinoko は画像（<img>）になり SVG座標を
   // 持たなくなったため、共通の BODY/skeleton をまだ使っている shizuku に差し替えた。
-  // shizuku、pikari も画像化されたため、さらに mokumo に差し替える
+  // shizuku、pikari、mokumo も画像化されたため、kirara に差し替える
   // （この不変条件は体格表 BODY 自体の話で、特定キャラの話ではない）。
   const bodyWidth = (stage) => {
-    const ellipses = svgExtents(characterSvg('mokumo', stage)).filter((s) => s.kind === 'ellipse');
+    const ellipses = svgExtents(characterSvg(SVG_REPRESENTATIVE, stage)).filter((s) => s.kind === 'ellipse');
     return Math.max(...ellipses.map((s) => s.maxX - s.minX));
   };
   const feet = (stage) => Math.max(
-    ...svgExtents(characterSvg('mokumo', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY)
+    ...svgExtents(characterSvg(SVG_REPRESENTATIVE, stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY)
   );
   const legLength = (stage) => Math.max(
-    ...svgExtents(characterSvg('mokumo', stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY - s.minY)
+    ...svgExtents(characterSvg(SVG_REPRESENTATIVE, stage)).filter((s) => s.kind === 'rect').map((s) => s.maxY - s.minY)
   );
 
   assert.ok(bodyWidth(0) < bodyWidth(1), '体が 初期 → 第1進化 で大きくなっていない');
@@ -210,9 +219,9 @@ test('画像を持つキャラ（ひのこ）は3形態とも <img> を返し、
   }
 });
 
-test('画像を持たないキャラ（mokumo）は今までどおり <svg> を返す', () => {
+test('画像を持たないキャラ（kirara）は今までどおり <svg> を返す', () => {
   for (const stage of [0, 1, 2]) {
-    const html = characterSvg('mokumo', stage);
+    const html = characterSvg(SVG_REPRESENTATIVE, stage);
     assert.ok(html.startsWith('<svg'), `stage${stage}: <svg> ではない`);
   }
 });
@@ -223,8 +232,8 @@ test('画像を持たないキャラ（mokumo）は今までどおり <svg> を�
 // 設計（コメント参照）。ここではその約束が実際に守られているかを、
 // ひのこ用に書いた検査と同じ形でしずく・はっぱにもかける（A8）。
 
-test('A8: 画像を持つキャラ（しずく・はっぱ・ぴかり）は3形態とも <img> を返し、srcが対応するPNGを指す', () => {
-  for (const charId of ['shizuku', 'happa', 'pikari']) {
+test('画像を持つキャラ（しずく・はっぱ・ぴかり・もくも）は3形態とも <img> を返し、srcが対応するPNGを指す', () => {
+  for (const charId of IMAGE_CHAR_IDS) {
     for (const stage of [0, 1, 2]) {
       const html = characterSvg(charId, stage);
       assert.ok(html.startsWith('<img'), `${charId} stage${stage}: <img> ではない`);
@@ -233,8 +242,8 @@ test('A8: 画像を持つキャラ（しずく・はっぱ・ぴかり）は3形
   }
 });
 
-test('A8: しずく・はっぱ・ぴかりの <img> は silhouette のとき本名を出さず、灰色シルエット用クラスが付く', () => {
-  for (const c of [{ id: 'shizuku', name: 'しずく' }, { id: 'happa', name: 'はっぱ' }, { id: 'pikari', name: 'ぴかり' }]) {
+test('しずく・はっぱ・ぴかり・もくもの <img> は silhouette のとき本名を出さず、灰色シルエット用クラスが付く', () => {
+  for (const c of IMAGE_CHARACTERS) {
     for (const stage of [0, 1, 2]) {
       const html = characterSvg(c.id, stage, { silhouette: true });
       assert.ok(!html.includes(c.name), `${c.id} stage${stage}: silhouette なのに本名が出た`);
@@ -245,8 +254,8 @@ test('A8: しずく・はっぱ・ぴかりの <img> は silhouette のとき本
   }
 });
 
-test('A8: しずく・はっぱ・ぴかりも hasArt が true・artPath が正しいパスを返す', () => {
-  for (const charId of ['shizuku', 'happa', 'pikari']) {
+test('しずく・はっぱ・ぴかり・もくもも hasArt が true・artPath が正しいパスを返す', () => {
+  for (const charId of IMAGE_CHAR_IDS) {
     for (const stage of [0, 1, 2]) {
       assert.equal(hasArt(charId, stage), true, `${charId} stage${stage}`);
       assert.equal(artPath(charId, stage), `./js/img/${charId}-${stage}.png`);
@@ -254,8 +263,8 @@ test('A8: しずく・はっぱ・ぴかりも hasArt が true・artPath が正�
   }
 });
 
-test('A8: しずく・はっぱ・ぴかりの svgFallback は hasArt を無視して必ずSVGを返す（画像読み込み失敗時の描き直し用）', () => {
-  for (const c of [{ id: 'shizuku', name: 'しずく' }, { id: 'happa', name: 'はっぱ' }, { id: 'pikari', name: 'ぴかり' }]) {
+test('しずく・はっぱ・ぴかり・もくもの svgFallback は hasArt を無視して必ずSVGを返す（画像読み込み失敗時の描き直し用）', () => {
+  for (const c of IMAGE_CHARACTERS) {
     for (const stage of [0, 1, 2]) {
       const svg = svgFallback(c.id, stage);
       assert.ok(svg.startsWith('<svg'), `${c.id} stage${stage}: <svg> ではない`);
@@ -285,6 +294,8 @@ test('artPath はキャラIDと形態からPNGパスを組み立てる', () => {
   assert.equal(hasArt('hinoko', 2), true);
   assert.equal(hasArt('pikari', 0), true);
   assert.equal(artPath('pikari', 2), './js/img/pikari-2.png');
+  assert.equal(hasArt('mokumo', 0), true);
+  assert.equal(artPath('mokumo', 2), './js/img/mokumo-2.png');
   assert.equal(hasArt('hinoko', 3), false); // 範囲外の形態は持っていない扱い
 });
 
@@ -299,7 +310,7 @@ test('ひのこの <img> は、フォールバックが状態なしで描き直�
 });
 
 test('画像を持たないキャラの <svg> には data-char-id 等は付かない（<img> 専用の仕組みのため）', () => {
-  const html = characterSvg('mokumo', 0);
+  const html = characterSvg(SVG_REPRESENTATIVE, 0);
   assert.ok(!html.includes('data-char-id'), 'SVGにも data-char-id が付いてしまっている');
 });
 
@@ -322,5 +333,5 @@ test('svgFallback は画像を持たないキャラ・不正な入力でも char
   assert.throws(() => svgFallback('hinoko', 3), /stage/);
   // 画像を持たないキャラでも普通に使える（将来 imgFallback 経由で来ることは無いが、
   // hasArt を無視するという仕様どおりであることの確認）
-  assert.ok(svgFallback('mokumo', 0).startsWith('<svg'));
+  assert.ok(svgFallback(SVG_REPRESENTATIVE, 0).startsWith('<svg'));
 });
