@@ -15,6 +15,7 @@ export const ART = {
   happa: [0, 1, 2],
   pikari: [0, 1, 2],
   mokumo: [0, 1, 2],
+  kirara: [0, 1, 2],
 };
 
 /** そのキャラ・その形態に画像が用意されているか */
