@@ -5,15 +5,16 @@ import { characterSvg, svgFallback } from '../js/svg/character.js';
 import { hasArt, artPath } from '../js/svg/artManifest.js';
 import { svgExtents } from './helpers/svg-extents.js';
 
-const IMAGE_CHAR_IDS = ['shizuku', 'happa', 'pikari', 'mokumo', 'kirara'];
+const IMAGE_CHAR_IDS = ['shizuku', 'happa', 'pikari', 'mokumo', 'kirara', 'ganro'];
 const IMAGE_CHARACTERS = [
   { id: 'shizuku', name: 'しずく' },
   { id: 'happa', name: 'はっぱ' },
   { id: 'pikari', name: 'ぴかり' },
   { id: 'mokumo', name: 'もくも' },
   { id: 'kirara', name: 'きらら' },
+  { id: 'ganro', name: 'がんろ' },
 ];
-const SVG_REPRESENTATIVE = 'ganro';
+const SVG_REPRESENTATIVE = 'kooru';
 
 // Task 28: ひのこは画像（<img>）で描かれるようになったため、SVG生成コードそのものを
 // 見るテスト（この1件と、下の「形態が進むほど大きくなる」）は代表キャラを
@@ -22,7 +23,7 @@ const SVG_REPRESENTATIVE = 'ganro';
 // 本タスク（しずく・はっぱの画像差し替え）で shizuku 自身が画像を持つように
 // なったため、代表キャラをさらに pikari（当時は画像を持たない）に
 // 差し替える。テストの狙い（SVG文字列が正しく組み立つこと）は変わっていない。
-// ぴかり・もくも・きららも画像化されたため、現在は ganro を代表キャラにする。
+// ぴかり・もくも・きらら・がんろも画像化されたため、現在は kooru を代表キャラにする。
 // ART に新しいキャラが増えるたびにここを差し替えるのは本質的ではないが、
 // 「画像を持たないキャラで代表させる」という設計そのものが ART の変化に弱い
 // ことは変えられない。せめて hasArt() で自動検知して分かりやすく落とす。
@@ -181,7 +182,7 @@ test('形態が進むほど大きくなる（足の裏・体の幅・足の長�
   // 体の幅（bodyRx*2）はいちばん外側の rect（足）ではなく、体の ellipse の幅で見る。
   // 元は hinoko で見ていたが、Task 28 で hinoko は画像（<img>）になり SVG座標を
   // 持たなくなったため、共通の BODY/skeleton をまだ使っている shizuku に差し替えた。
-  // shizuku、pikari、mokumo、kirara も画像化されたため、ganro に差し替える
+  // shizuku、pikari、mokumo、kirara、ganro も画像化されたため、kooru に差し替える
   // （この不変条件は体格表 BODY 自体の話で、特定キャラの話ではない）。
   const bodyWidth = (stage) => {
     const ellipses = svgExtents(characterSvg(SVG_REPRESENTATIVE, stage)).filter((s) => s.kind === 'ellipse');
@@ -220,7 +221,7 @@ test('画像を持つキャラ（ひのこ）は3形態とも <img> を返し、
   }
 });
 
-test('画像を持たない代表キャラ（ganro）は今までどおり <svg> を返す', () => {
+test('画像を持たない代表キャラ（kooru）は今までどおり <svg> を返す', () => {
   for (const stage of [0, 1, 2]) {
     const html = characterSvg(SVG_REPRESENTATIVE, stage);
     assert.ok(html.startsWith('<svg'), `stage${stage}: <svg> ではない`);
@@ -233,7 +234,7 @@ test('画像を持たない代表キャラ（ganro）は今までどおり <svg>
 // 設計（コメント参照）。ここではその約束が実際に守られているかを、
 // ひのこ用に書いた検査と同じ形でしずく・はっぱにもかける（A8）。
 
-test('画像を持つキャラ（しずく・はっぱ・ぴかり・もくも・きらら）は3形態とも <img> を返し、srcが対応するPNGを指す', () => {
+test('画像を持つキャラ（しずく・はっぱ・ぴかり・もくも・きらら・がんろ）は3形態とも <img> を返し、srcが対応するPNGを指す', () => {
   for (const charId of IMAGE_CHAR_IDS) {
     for (const stage of [0, 1, 2]) {
       const html = characterSvg(charId, stage);
@@ -243,7 +244,7 @@ test('画像を持つキャラ（しずく・はっぱ・ぴかり・もくも�
   }
 });
 
-test('しずく・はっぱ・ぴかり・もくも・きららの <img> は silhouette のとき本名を出さず、灰色シルエット用クラスが付く', () => {
+test('しずく・はっぱ・ぴかり・もくも・きらら・がんろの <img> は silhouette のとき本名を出さず、灰色シルエット用クラスが付く', () => {
   for (const c of IMAGE_CHARACTERS) {
     for (const stage of [0, 1, 2]) {
       const html = characterSvg(c.id, stage, { silhouette: true });
@@ -255,7 +256,7 @@ test('しずく・はっぱ・ぴかり・もくも・きららの <img> は sil
   }
 });
 
-test('しずく・はっぱ・ぴかり・もくも・きららも hasArt が true・artPath が正しいパスを返す', () => {
+test('しずく・はっぱ・ぴかり・もくも・きらら・がんろも hasArt が true・artPath が正しいパスを返す', () => {
   for (const charId of IMAGE_CHAR_IDS) {
     for (const stage of [0, 1, 2]) {
       assert.equal(hasArt(charId, stage), true, `${charId} stage${stage}`);
@@ -264,7 +265,7 @@ test('しずく・はっぱ・ぴかり・もくも・きららも hasArt が tr
   }
 });
 
-test('しずく・はっぱ・ぴかり・もくも・きららの svgFallback は hasArt を無視して必ずSVGを返す（画像読み込み失敗時の描き直し用）', () => {
+test('しずく・はっぱ・ぴかり・もくも・きらら・がんろの svgFallback は hasArt を無視して必ずSVGを返す（画像読み込み失敗時の描き直し用）', () => {
   for (const c of IMAGE_CHARACTERS) {
     for (const stage of [0, 1, 2]) {
       const svg = svgFallback(c.id, stage);
@@ -299,6 +300,8 @@ test('artPath はキャラIDと形態からPNGパスを組み立てる', () => {
   assert.equal(artPath('mokumo', 2), './js/img/mokumo-2.png');
   assert.equal(hasArt('kirara', 0), true);
   assert.equal(artPath('kirara', 2), './js/img/kirara-2.png');
+  assert.equal(hasArt('ganro', 0), true);
+  assert.equal(artPath('ganro', 2), './js/img/ganro-2.png');
   assert.equal(hasArt('hinoko', 3), false); // 範囲外の形態は持っていない扱い
 });
 
